@@ -33,7 +33,7 @@ else:
     if ligas:
         df = df[df["Campeonato"].isin(ligas)]
 
-    # Exibição Principal
+    # Exibição Principal - Removida a configuração de StatusColumn que causava erro
     st.dataframe(
         df, 
         column_config={
@@ -41,7 +41,7 @@ else:
             "Campeonato": st.column_config.TextColumn("Campeonato", width="medium"),
             "Jogo": st.column_config.TextColumn("Jogo", width="large"),
             "Palpite": st.column_config.TextColumn("Palpite", width="large"),
-            "Status": st.column_config.StatusColumn("Resultado")
+            "Status": st.column_config.TextColumn("Resultado")
         },
         hide_index=True,
         use_container_width=True
