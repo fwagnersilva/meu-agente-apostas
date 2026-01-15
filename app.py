@@ -53,6 +53,16 @@ def format_match_date(date_str):
     except:
         return date_str
 
+def format_status(status_str):
+    """Formata status para display amigável."""
+    if not status_str:
+        return "N/A"
+    if status_str.upper() == "PENDING":
+        return "Pendente ⏳"
+    if status_str.upper().startswith("FINISHED"):
+        return "Finalizado ✅"
+    return "N/A"
+
 def categorize_games(df):
     """
     Separa jogos em 3 categorias:
@@ -98,6 +108,9 @@ def display_games_table(df, title=""):
         lambda x: f"{x:.2f}" if x > 0 else "—"
     )
     
+    # Formata status
+    display_df['Status Formatado'] = display_df['status'].apply(format_status)
+    
     # Seleciona colunas para exibição
     cols_to_show = [
         'Data',
@@ -106,7 +119,7 @@ def display_games_table(df, title=""):
         'Jogo',
         'selection',
         'Odd Formatada',
-        'status'
+        'Status Formatado'
     ]
     
     # Renomeia para exibição mais clara
@@ -114,7 +127,7 @@ def display_games_table(df, title=""):
         'match_time': 'Horário',
         'league': 'Campeonato',
         'selection': 'Prognóstico',
-        'status': 'Status'
+        'Status Formatado': 'Status'
     })
     
     # Exibe tabela
@@ -221,7 +234,7 @@ else:
         
         # Gráfico: Distribuição por Status
         st.subheader("Distribuição por Status")
-        status_count = df['status'].str.split().str[0].value_counts()  # Pega primeiro palavra (PENDING/FINISHED)
+        status_count = df['status'].str.split().str[0].value_counts()
         st.bar_chart(status_count)
         
         st.divider()
@@ -250,9 +263,10 @@ else:
             
             st.divider()
             
-            # Histograma de Odds
-            st.write("Distribuição de Odds")
-            st.histogram(odds_valid, nbins=20, key="odds_hist")
+            # Distribuição de Odds
+            st.write("Distribuição de Odds (por faixa)")
+            hist_data = pd.cut(odds_valid, bins=10).value_counts().sort_index()
+            st.bar_chart(hist_data)
         else:
             st.warning("Sem dados de odds para análise.")
 
