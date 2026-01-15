@@ -33,7 +33,6 @@ def init_db():
     conn.close()
 
 def get_previews():
-    print("🔍 Buscando lista de jogos...")
     try:
         response = requests.get(PREVIEWS_URL, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -45,7 +44,6 @@ def get_previews():
                     links.append(full_link)
         return links
     except Exception as e:
-        print(f"❌ Erro na lista: {e}")
         return []
 
 def parse_preview(url):
@@ -53,28 +51,23 @@ def parse_preview(url):
         response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Extrair Times (Palmeiras X Santos)
-        home_team = "Desconhecido"
-        away_team = "Desconhecido"
+        # 1. Extrair Times
+        home_team = "Time A"
+        away_team = "Time B"
         
-        # Tenta pegar dos elementos de nome de time
-        teams = soup.select('.team-name, .team-title')
-        if len(teams) >= 2:
-            home_team = teams[0].get_text(strip=True)
-            away_team = teams[1].get_text(strip=True)
-        else:
-            # Fallback: H1
-            h1 = soup.find('h1')
-            if h1:
-                title = h1.get_text(strip=True).replace("Prognóstico ", "")
-                title = re.sub(r'\(.*\)', '', title).strip()
-                for sep in [" vs ", " - ", " v "]:
-                    if sep in title:
-                        parts = title.split(sep)
-                        home_team, away_team = parts[0].strip(), parts[1].strip()
-                        break
+        # Tenta pegar do título H1 que é o mais confiável
+        h1 = soup.find('h1')
+        if h1:
+            title = h1.get_text(strip=True).replace("Prognóstico ", "")
+            title = re.sub(r'\(.*\)', '', title).strip()
+            for sep in [" vs ", " - ", " v "]:
+                if sep in title:
+                    parts = title.split(sep)
+                    home_team, away_team = parts[0].strip(), parts[1].strip()
+                    break
+            if home_team == "Time A": home_team = title
 
-        # 2. Extrair Data (14 janeiro 2026)
+        # 2. Extrair Data
         match_date = "N/A"
         for tag in soup.find_all(['span', 'div', 'p']):
             txt = tag.get_text()
@@ -83,16 +76,15 @@ def parse_preview(url):
                 match_date = m.group(1)
                 break
         
-        # 3. Extrair Campeonato (Brasil - Paulista A1)
+        # 3. Extrair Campeonato
         league = "Geral"
         bc = soup.select('.breadcrumbs li')
         if len(bc) >= 4:
-            # Geralmente: Home > Estatísticas > País > Liga
-            pais = bc[2].get_text(strip=True)
-            liga = bc[3].get_text(strip=True)
+            pais = bc[2].get_text(strip=True).replace("»", "").strip()
+            liga = bc[3].get_text(strip=True).replace("»", "").strip()
             league = f"{pais} - {liga}"
         elif len(bc) >= 3:
-            league = bc[2].get_text(strip=True)
+            league = bc[2].get_text(strip=True).replace("»", "").strip()
 
         # 4. Extrair Palpite
         prediction = "Não encontrado"
@@ -111,7 +103,7 @@ def parse_preview(url):
             box = soup.select_one('.prediction-box, .bet-suggestion')
             if box: prediction = box.get_text(strip=True)
 
-        # 5. Status/Placar
+        # 5. Status
         status = "PENDING"
         score_tag = soup.select_one('.match-score, .score')
         if score_tag:
@@ -130,7 +122,6 @@ def parse_preview(url):
             "status": status
         }
     except Exception as e:
-        print(f"⚠️ Erro em {url}: {e}")
         return None
 
 def save(data):
@@ -152,7 +143,6 @@ def save(data):
 def main():
     init_db()
     links = get_previews()
-    print(f"🚀 Processando {len(links)} jogos...")
     for link in links:
         data = parse_preview(link)
         save(data)
