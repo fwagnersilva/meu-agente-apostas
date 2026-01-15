@@ -6,7 +6,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="Monitor de Apostas", layout="wide")
 
-st.title("⚽ Monitor de Prognósticos")
+st.title("⚽ Monitor de Prognósticos & Resultados")
 
 if not os.path.exists("apostas_academia.db"):
     st.warning("⚠️ Banco de dados não encontrado. Rode o agente primeiro.")
@@ -21,22 +21,18 @@ else:
         home_team as 'Mandante',
         away_team as 'Visitante',
         selection as 'Palpite',
-        status as 'Status',
-        date_collected
+        status as 'Placar/Status'
     FROM predictions 
-    ORDER BY match_date_time ASC
+    ORDER BY match_date_time DESC
     """
     
     df = pd.read_sql_query(query, conn)
     conn.close()
 
     # Tratamento de Data para Filtro
-    # Tenta extrair apenas a data do texto "14 janeiro 2026 - 19:30"
     def extract_date(text):
         try:
-            # Pega a parte antes do " - "
-            date_part = text.split(" - ")[0]
-            return date_part
+            return text.split(" - ")[0]
         except:
             return "Outros"
 
@@ -47,7 +43,7 @@ else:
     st.sidebar.header("🔍 Filtros")
     
     # Filtro por Dia
-    dias_disponiveis = sorted(df['Dia'].unique())
+    dias_disponiveis = sorted(df['Dia'].unique(), reverse=True)
     dia_selecionado = st.sidebar.selectbox("Selecionar Dia", options=["Todos"] + dias_disponiveis)
     
     if dia_selecionado != "Todos":
@@ -59,21 +55,21 @@ else:
     if campeonato_sel:
         df = df[df['Campeonato'].isin(campeonato_sel)]
 
-    # Filtro por Palpite (Prognóstico)
-    palpites = sorted(df['Palpite'].unique())
-    palpite_sel = st.sidebar.multiselect("Prognóstico", options=palpites)
-    if palpite_sel:
-        df = df[df['Palpite'].isin(palpite_sel)]
-
     # --- EXIBIÇÃO PRINCIPAL ---
     
     # Métricas
-    col1, col2 = st.columns(2)
-    col1.metric("Jogos Exibidos", len(df))
-    col2.metric("Campeonatos", len(df['Campeonato'].unique()))
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Jogos Coletados", len(df))
+    
+    # Conta quantos jogos já têm placar (não são PENDING)
+    com_resultado = len(df[df['Placar/Status'] != 'PENDING'])
+    col2.metric("Com Resultado", com_resultado)
+    col3.metric("Campeonatos", len(df['Campeonato'].unique()))
 
     # Tabela
-    cols_to_show = ['Data/Hora', 'Campeonato', 'Jogo', 'Palpite', 'Status']
+    st.subheader(f"📋 Prognósticos - {dia_selecionado}")
+    
+    cols_to_show = ['Data/Hora', 'Campeonato', 'Jogo', 'Palpite', 'Placar/Status']
     
     st.dataframe(
         df[cols_to_show], 
@@ -82,11 +78,13 @@ else:
             "Campeonato": st.column_config.TextColumn("Campeonato", width="medium"),
             "Jogo": st.column_config.TextColumn("Jogo", width="large"),
             "Palpite": st.column_config.TextColumn("Palpite", width="large"),
-            "Status": st.column_config.TextColumn("Status")
+            "Placar/Status": st.column_config.TextColumn("Placar/Status", width="small")
         },
         hide_index=True,
         use_container_width=True
     )
+
+    st.info("💡 Dica: Jogos com placar (ex: 1 - 0) já foram finalizados ou estão em andamento. Compare com o palpite para avaliar o desempenho!")
 
     if st.button("🔄 Atualizar Dados"):
         st.rerun()
