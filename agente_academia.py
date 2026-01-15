@@ -1,7 +1,7 @@
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 
 # --- CONFIGURAÇÃO ---
@@ -34,18 +34,20 @@ def init_db():
     conn.commit()
     conn.close()
 
-def get_previews(page=1):
-    url = f"{PREVIEWS_URL}/index/page:{page}" if page > 1 else PREVIEWS_URL
-    print(f"🔍 Buscando lista de jogos (Página {page})...")
+def get_previews():
+    print("🔍 Buscando lista de jogos...")
     try:
-        response = requests.get(url, headers=HEADERS)
+        response = requests.get(PREVIEWS_URL, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
-        links = set()
+        links = []
+        # Pega os links de preview na página inicial de previews
         for a in soup.select('a[href*="/stats/match/"]'):
             if '/preview' in a['href']:
                 full_link = BASE_URL + a['href'] if a['href'].startswith('/') else a['href']
-                links.add(full_link)
-        return list(links)
+                if full_link not in links:
+                    links.append(full_link)
+        print(f"📌 Encontrados {len(links)} links.")
+        return links
     except Exception as e:
         print(f"❌ Erro na lista: {e}")
         return []
@@ -55,134 +57,95 @@ def parse_preview(url):
         response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Extrair Times (Lógica baseada no print)
-        home_team = "Desconhecido"
-        away_team = "Desconhecido"
-        
-        # Tenta pegar dos elementos que contêm os nomes dos times (geralmente perto dos logos)
-        # No print, os nomes estão em destaque abaixo dos logos
-        team_links = soup.select('.team-name a, .match-header .team-name')
-        if len(team_links) >= 2:
-            home_team = team_links[0].get_text(strip=True)
-            away_team = team_links[1].get_text(strip=True)
+        # 1. Times
+        title = soup.find('h1').get_text(strip=True).replace("Prognóstico ", "") if soup.find('h1') else "Jogo"
+        title = re.sub(r'\(.*\)', '', title).strip()
+        home, away = "Time A", "Time B"
+        if " vs " in title:
+            home, away = title.split(" vs ")[:2]
+        elif " - " in title:
+            home, away = title.split(" - ")[:2]
         else:
-            # Fallback: Título H1
-            h1 = soup.find('h1')
-            if h1:
-                title = h1.get_text(strip=True).replace("Prognóstico ", "")
-                title = re.sub(r'\(.*\)', '', title).strip()
-                if " vs " in title:
-                    home_team, away_team = title.split(" vs ")[:2]
-                elif " - " in title:
-                    home_team, away_team = title.split(" - ")[:2]
+            home = title
 
-        # 2. Extrair Data/Hora e Campeonato
-        date_time = "N/A"
+        # 2. Data e Liga
+        date_time = datetime.now().strftime("%d %B %Y - %H:%M")
         league = "Geral"
         
-        # Procura o bloco central de informações
-        info_block = soup.select_one('.match-header-info, .game-info')
-        if info_block:
-            text = info_block.get_text(" ", strip=True)
-            dt_match = re.search(r'(\d{1,2}\s+\w+\s+\d{4}\s+-\s+\d{2}:\d{2})', text)
-            if dt_match: date_time = dt_match.group(1)
-            
-            # Liga: geralmente é o texto logo após a data ou em um span específico
-            # No print aparece "Paulista A1" logo abaixo da data
-            lines = [l.strip() for l in info_block.get_text("\n").split("\n") if l.strip()]
-            for i, line in enumerate(lines):
-                if re.search(r'\d{2}:\d{2}', line) and i + 1 < len(lines):
-                    league = lines[i+1]
-                    break
+        # Tenta achar a data real no texto
+        for tag in soup.find_all(['span', 'div', 'p']):
+            txt = tag.get_text()
+            m = re.search(r'(\d{1,2}\s+\w+\s+\d{4}\s+-\s+\d{2}:\d{2})', txt)
+            if m:
+                date_time = m.group(1)
+                break
+        
+        # Tenta achar a liga nos breadcrumbs
+        bc = soup.select('.breadcrumbs li')
+        if len(bc) >= 3:
+            league = bc[2].get_text(strip=True)
+            if len(bc) >= 4 and "Prognóstico" not in bc[3].get_text():
+                league = bc[3].get_text(strip=True)
 
-        # 3. Extrair Placar
-        score_home = "-"
-        score_away = "-"
-        # Procura por elementos de placar (geralmente grandes números no centro)
-        scores = soup.select('.match-score .score, .score-home, .score-away')
-        if len(scores) >= 2:
-            score_home = scores[0].get_text(strip=True)
-            score_away = scores[1].get_text(strip=True)
-        else:
-            # Tenta achar o placar no formato "1 - 0"
-            score_full = soup.select_one('.match-score, .score')
-            if score_full:
-                txt = score_full.get_text(strip=True)
-                if "-" in txt and len(txt) < 10:
-                    parts = txt.split("-")
-                    score_home, score_away = parts[0].strip(), parts[1].strip()
-
-        # 4. Extrair O PALPITE (Sugestão do editor)
-        prediction_text = "Não encontrado"
-        # Procura especificamente pela caixa de sugestão
-        editor_label = soup.find(string=re.compile("Sugestão do editor"))
-        if editor_label:
-            # Sobe para o container e busca o texto da aposta
-            container = editor_label.find_parent(['td', 'div', 'tr'])
+        # 3. Palpite (Sugestão do editor)
+        prediction = "Não encontrado"
+        editor = soup.find(string=re.compile("Sugestão do editor"))
+        if editor:
+            container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
-                # Pega todos os textos e filtra o que não é o título nem "Pub"
-                parts = [p.strip() for p in container.get_text("|", strip=True).split("|")]
-                for p in parts:
-                    if p and "Sugestão do editor" not in p and "Pub" not in p and len(p) > 3:
-                        prediction_text = p
-                        break
+                txt = container.get_text(" ", strip=True)
+                if "Sugestão do editor" in txt:
+                    prediction = txt.split("Sugestão do editor")[-1].strip()
+        
+        # Fallback palpite
+        if prediction == "Não encontrado" or len(prediction) < 3:
+            box = soup.select_one('.prediction-box, .bet-suggestion')
+            if box: prediction = box.get_text(strip=True)
+
+        # 4. Placar
+        score = "PENDING"
+        score_tag = soup.select_one('.match-score, .score')
+        if score_tag:
+            s_txt = score_tag.get_text(strip=True)
+            if "-" in s_txt and len(s_txt) < 10:
+                score = s_txt
 
         return {
             "match_url": url,
             "date_collected": datetime.now().strftime("%Y-%m-%d"),
             "match_date_time": date_time,
             "league": league,
-            "home_team": home_team.strip(),
-            "away_team": away_team.strip(),
-            "prediction": prediction_text.strip(),
-            "score_home": score_home,
-            "score_away": score_away
+            "home_team": home,
+            "away_team": away,
+            "prediction": prediction,
+            "status": score
         }
     except Exception as e:
-        print(f"⚠️ Erro ao ler {url}: {e}")
+        print(f"⚠️ Erro em {url}: {e}")
         return None
 
-def save_prediction(data):
+def save(data):
     if not data or data['prediction'] == "Não encontrado": return
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     try:
-        status = "PENDING"
-        if data['score_home'] != "-" and data['score_away'] != "-":
-            status = f"{data['score_home']} - {data['score_away']}"
-
         c.execute('''
             INSERT OR REPLACE INTO predictions 
-            (match_url, date_collected, match_date_time, league, home_team, away_team, selection, status, score_home, score_away)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data['match_url'], 
-            data['date_collected'], 
-            data['match_date_time'], 
-            data['league'], 
-            data['home_team'], 
-            data['away_team'], 
-            data['prediction'],
-            status,
-            data['score_home'],
-            data['score_away']
-        ))
+            (match_url, date_collected, match_date_time, league, home_team, away_team, selection, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (data['match_url'], data['date_collected'], data['match_date_time'], data['league'], 
+              data['home_team'], data['away_team'], data['prediction'], data['status']))
         conn.commit()
-        print(f"✅ {data['match_date_time']} | {data['home_team']} {data['score_home']}-{data['score_away']} {data['away_team']} | Tip: {data['prediction']}")
-    except Exception as e:
-        print(f"❌ Erro banco: {e}")
+        print(f"✅ {data['home_team']} vs {data['away_team']} - {data['prediction']}")
     finally:
         conn.close()
 
 def main():
     init_db()
-    for p in [1, 2]:
-        links = get_previews(page=p)
-        print(f"🚀 Processando {len(links)} jogos da página {p}...")
-        for link in links:
-            data = parse_preview(link)
-            save_prediction(data)
-    print("🏁 Fim.")
+    links = get_previews()
+    for link in links[:15]: # Limita a 15 para ser rápido
+        data = parse_preview(link)
+        save(data)
 
 if __name__ == "__main__":
     main()
