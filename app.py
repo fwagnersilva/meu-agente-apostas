@@ -265,8 +265,15 @@ else:
             
             # Distribuição de Odds
             st.write("Distribuição de Odds (por faixa)")
-            hist_data = pd.cut(odds_valid, bins=10).value_counts().sort_index()
-            st.bar_chart(hist_data)
+            try:
+                hist_counts = pd.cut(odds_valid, bins=10).value_counts().sort_index()
+                hist_df = pd.DataFrame({
+                    'Faixa': [str(x) for x in hist_counts.index],
+                    'Quantidade': hist_counts.values
+                })
+                st.bar_chart(hist_df.set_index('Faixa'))
+            except Exception as e:
+                st.info(f"Gráfico de distribuição não disponível. {len(odds_valid)} odds coletadas.")
         else:
             st.warning("Sem dados de odds para análise.")
 
