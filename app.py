@@ -2,10 +2,23 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import os
+import re
 
 st.set_page_config(page_title="Monitor de Apostas", layout="wide")
 
 st.title("⚽ Monitor de Prognósticos")
+
+def clean_prediction(text):
+    if not text: return text
+    # Remove prefixos
+    text = text.replace("Sugestão do editor", "").replace("Pub", "").strip()
+    # Pega apenas até o final da Odd
+    match = re.search(r'(.*?Odd\s*\d+\.\d+)', text)
+    if match:
+        return match.group(1).strip()
+    # Fallback: remove textos legais comuns
+    text = text.split("Aposte aqui")[0].split("As odds podem")[0].strip()
+    return text
 
 if not os.path.exists("apostas_academia.db"):
     st.warning("⚠️ Banco de dados não encontrado. Rode o agente primeiro.")
@@ -26,16 +39,17 @@ else:
     df = pd.read_sql_query(query, conn)
     conn.close()
 
+    # Limpeza extra no DataFrame
+    df['Palpite'] = df['Palpite'].apply(clean_prediction)
+
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("🔍 Filtros")
     
-    # Filtro por Dia
     dias = sorted(df['Data'].unique(), reverse=True)
     dia_sel = st.sidebar.selectbox("Selecionar Dia", options=["Todos"] + dias)
     if dia_sel != "Todos":
         df = df[df['Data'] == dia_sel]
 
-    # Filtro por Campeonato
     campeonatos = sorted(df['Campeonato'].unique())
     camp_sel = st.sidebar.multiselect("Campeonato", options=campeonatos)
     if camp_sel:
