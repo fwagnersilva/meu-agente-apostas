@@ -115,74 +115,55 @@ def parse_preview(url):
                         selection = full_text
 
         if len(selection) < 3 or "atividade de lazer" in selection.lower():
-            selection = "Análise sem tip clara"
+            selection = "Sem prognóstico disponível"
 
-        # 5. Status/Placar - PROTEÇÃO MÁXIMA CONTRA PLACARES FALSOS
+        # 5. Status/Placar - PROTEÇÃO MÁXIMA
         status = "PENDING"
-        
-        # REGRA ABSOLUTA: Se o jogo é HOJE ou no FUTURO, SEMPRE será PENDING
-        # Só procura placar se o jogo foi ONTEM ou antes
         today = datetime.now()
         is_future_or_today = True
         
         if match_date != "N/A":
             try:
-                # Converte apenas a DATA (ignora hora inicialmente)
                 match_date_obj = datetime.strptime(match_date, "%Y-%m-%d").date()
                 today_date = today.date()
                 
-                # Se o jogo é HOJE
                 if match_date_obj == today_date:
-                    # Verifica a HORA para ter certeza absoluta
                     try:
                         match_datetime = datetime.strptime(f"{match_date} {match_time}", "%Y-%m-%d %H:%M")
-                        # Adiciona margem de 2 horas (tempo do jogo) para considerar finalizado
                         if match_datetime > (today - timedelta(hours=2)):
                             is_future_or_today = True
                             status = "PENDING"
                         else:
                             is_future_or_today = False
                     except:
-                        # Se falhar, assume que ainda não aconteceu
                         is_future_or_today = True
                         status = "PENDING"
                 
-                # Se o jogo é no FUTURO
                 elif match_date_obj > today_date:
                     is_future_or_today = True
                     status = "PENDING"
                 
-                # Se o jogo foi ONTEM ou antes
                 else:
                     is_future_or_today = False
             except:
-                # Em caso de erro, sempre assume futuro (segurança)
                 is_future_or_today = True
                 status = "PENDING"
         
-        # PROTEÇÃO 2: Só busca placar se o jogo foi DEFINITIVAMENTE no passado
-        # E mesmo assim, com restrições severas
         if not is_future_or_today and match_date != "N/A":
-            # Busca APENAS em áreas muito específicas do cabeçalho
-            # NUNCA busca em áreas de H2H, histórico, estatísticas
             header = soup.find('div', class_='stats-match-header')
             
             if header:
-                # Remove qualquer seção de H2H/histórico que possa estar no header
                 for unwanted in header.select('.h2h, .historico, .confrontos, .ultimos-jogos, [class*="history"]'):
                     unwanted.decompose()
                 
-                # Procura APENAS por elementos que contenham "resultado" ou "placar" no nome da classe
                 score_elem = header.select_one('[class*="result"], [class*="score"], [class*="final"]')
                 
                 if score_elem:
                     score_text = score_elem.get_text(strip=True)
-                    # Aceita APENAS formato exato X - Y (números de 0-9)
                     score_match = re.search(r'^([0-9])\s*-\s*([0-9])$', score_text)
                     if score_match:
                         status = f"{score_match.group(1)} - {score_match.group(2)}"
         
-        # Log de debug melhorado
         print(f"   📅 {match_date} {match_time} | Futuro/Hoje: {is_future_or_today} | Status: {status}")
         
         return {
@@ -213,9 +194,10 @@ def month_to_num(month_name):
     return months.get(month_name.lower(), '01')
 
 def save(data):
-    if not data or data['selection'] == "Análise sem tip clara": 
+    if not data: 
         return
-        
+    
+    # Salva TODOS os jogos, mesmo sem prognóstico claro
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     try:
@@ -235,9 +217,10 @@ def save(data):
 
 def main():
     init_db()
-    print("🚀 Iniciando coleta (v4 - Proteção Anti-H2H)...")
+    print("🚀 Iniciando coleta (v5 - Salva Todos os Jogos)...")
     print(f"⏰ Horário atual: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
     
+    total_jogos = 0
     for p in range(1, 4):
         links = get_previews(page=p)
         if not links: break
@@ -247,9 +230,10 @@ def main():
             data = parse_preview(link)
             if data:
                 save(data)
+                total_jogos += 1
                 print(f"✅ {data['home_team']} x {data['away_team']} -> {data['status']}")
     
-    print("\n🏁 Finalizado.")
+    print(f"\n🏁 Finalizado! {total_jogos} jogos salvos no banco.")
 
 if __name__ == "__main__":
     main()
