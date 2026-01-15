@@ -1,43 +1,76 @@
-name: Coleta Diária Academia
+name: Agente v7 - Extração e Atualização Diária
+
 on:
   schedule:
-    - cron: '0 11 * * *'
-  workflow_dispatch:
+    # Roda diariamente às 00:00 (hora UTC) - pega novos jogos
+    - cron: '0 0 * * *'
+    # Roda a cada 1 hora para atualizar resultados
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Permite rodar manualmente
+
 jobs:
-  build:
+  run-agent:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    
     steps:
-      - name: Baixar código
+      # 1. Checkout do repositório
+      - name: 📦 Checkout código
         uses: actions/checkout@v3
       
-      - name: Instalar Python
+      # 2. Setup Python
+      - name: 🐍 Setup Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.13'
       
-      - name: Instalar bibliotecas
+      # 3. Cache de dependências
+      - name: 💾 Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      # 4. Instalar dependências
+      - name: 📚 Instalar bibliotecas
         run: |
-          pip install requests beautifulsoup4
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 pandas
       
-      - name: Rodar Agente
-        run: python agente_academia.py
-      
-      - name: Salvar Banco de Dados
+      # 5. Download banco de dados (se existir)
+      - name: 📥 Download banco anterior
+        continue-on-error: true
         run: |
-          git config --global user.name 'Agente Bot'
-          git config --global user.email 'bot@noreply.github.com'
-          
-          # Adiciona o banco (novo ou atualizado)
-          git add apostas_academia.db
-          
-          # Verifica se há mudanças para commitar
-          if git diff --staged --quiet; then
-            echo "⚠️ Nenhuma mudança no banco de dados"
-            exit 0
+          if [ -f apostas_academia.db ]; then
+            echo "✅ Banco de dados encontrado"
+          else
+            echo "ℹ️  Novo banco será criado"
           fi
+      
+      # 6. Executar agente
+      - name: 🤖 Rodar Agente v7
+        run: |
+          python agente_v7.py
+      
+      # 7. Exibir log de execução
+      - name: 📋 Mostrar logs
+        if: always()
+        run: |
+          if [ -f agente_log.txt ]; then
+            echo "=== ÚLTIMAS 20 LINHAS DO LOG ==="
+            tail -20 agente_log.txt
+          fi
+      
+      # 8. Fazer commit e push (atualizar banco no repositório)
+      - name: 📤 Fazer commit do banco
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
           
-          # Commit e push
-          git commit -m "Atualização diária $(date +'%Y-%m-%d %H:%M UTC')"
-          git push origin main
+          if [ -f apostas_academia.db ]; then
+            git add apostas_academia.db agente_log.txt
+            git commit -m "🔄 Atualização automática: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || true
+            git push
+          fi
