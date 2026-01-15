@@ -51,17 +51,14 @@ def parse_preview(url):
         response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Extrair Times (Lógica baseada na URL e no Título)
+        # 1. Extrair Times
         home_team = "Time A"
         away_team = "Time B"
-        
-        # Tenta extrair da URL se possível (ex: .../palmeiras/santos/...)
         url_parts = url.split('/')
         if len(url_parts) >= 8:
             home_team = url_parts[-4].replace('-', ' ').title()
             away_team = url_parts[-3].replace('-', ' ').title()
         
-        # Refina com o H1
         h1 = soup.find('h1')
         if h1:
             title = h1.get_text(strip=True).replace("Prognóstico ", "")
@@ -81,13 +78,11 @@ def parse_preview(url):
                 match_date = m.group(1)
                 break
         
-        # 3. Extrair Campeonato (Limpo)
+        # 3. Extrair Campeonato
         league = "Geral"
         bc = soup.select('.breadcrumbs li')
         if len(bc) >= 4:
-            # Pega apenas o nome da liga, removendo o jogo se estiver lá
             liga_raw = bc[3].get_text(strip=True).replace("»", "").strip()
-            # Se a liga contiver "vs" ou "-", provavelmente é o jogo, então pega o anterior
             if " vs " in liga_raw.lower() or " - " in liga_raw:
                 league = bc[2].get_text(strip=True).replace("»", "").strip()
             else:
@@ -95,23 +90,22 @@ def parse_preview(url):
         elif len(bc) >= 3:
             league = bc[2].get_text(strip=True).replace("»", "").strip()
 
-        # 4. Extrair Palpite (Menos de 2,5 gols Odd 1.75)
+        # 4. Extrair Palpite (Limpeza Final)
         prediction = "Não encontrado"
         editor = soup.find(string=re.compile("Sugestão do editor"))
         if editor:
             container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
                 txt = container.get_text(" ", strip=True)
-                # Limpeza agressiva
+                # Remove prefixos e sufixos conhecidos
                 txt = txt.replace("Sugestão do editor", "").replace("Pub", "").strip()
-                # Pega até "Aposte aqui" ou similar
                 txt = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
-                # Tenta formatar "Palpite + Odd"
-                odd_match = re.search(r'Odd\s*\d+\.\d+', txt)
-                if odd_match:
-                    odd_str = odd_match.group(0)
-                    palpite_str = txt.split(odd_str)[0].strip()
-                    prediction = f"{palpite_str} {odd_str}"
+                
+                # Regex para pegar a Dica e a Odd
+                # Ex: "Menos de 2,5 gols Odd 1.75"
+                match = re.search(r'^(.*?)(Odd\s*\d+\.\d+)', txt)
+                if match:
+                    prediction = f"{match.group(1).strip()} {match.group(2).strip()}"
                 else:
                     prediction = txt
         
