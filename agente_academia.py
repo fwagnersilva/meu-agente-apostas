@@ -1,7 +1,7 @@
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 # --- CONFIGURAÇÃO ---
@@ -73,7 +73,6 @@ def parse_preview(url):
         match_date = "N/A"
         match_time = "00:00"
         
-        # Busca data no formato "14 janeiro 2026 - 19:30"
         date_pattern = re.compile(r'(\d{1,2})\s+([a-zA-Zç]+)\s+(\d{4})\s*[-–]\s*(\d{2}:\d{2})')
         
         header_area = soup.find('div', class_='stats-match-header') or soup
@@ -103,13 +102,11 @@ def parse_preview(url):
             if container:
                 full_text = container.get_text(" ", strip=True).replace("Sugestão do editor", "").replace("Pub", "").strip()
                 
-                # Regex mais flexível para odd (1.90 ou 1,90)
                 odd_match = re.search(r'Odd\s*(\d+[.,]\d+)', full_text, re.IGNORECASE)
                 if odd_match:
                     odd = float(odd_match.group(1).replace(',', '.'))
                     selection = full_text[:odd_match.start()].strip()
                 else:
-                    # Tenta achar número solto no fim
                     dec_match = re.search(r'(\d+[.,]\d+)$', full_text)
                     if dec_match:
                         odd = float(dec_match.group(1).replace(',', '.'))
@@ -120,39 +117,68 @@ def parse_preview(url):
         if len(selection) < 3 or "atividade de lazer" in selection.lower():
             selection = "Análise sem tip clara"
 
-        # 5. Status/Placar (CORREÇÃO DE BUG)
+        # 5. Status/Placar - PROTEÇÃO MÁXIMA CONTRA PLACARES FALSOS
         status = "PENDING"
         
-        # Lógica de proteção:
-        # Se a data do jogo for >= Hoje, assume PENDING e ignora placares encontrados
-        # (Isso evita pegar placar de histórico H2H)
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        is_future_game = False
+        # REGRA ABSOLUTA: Se o jogo é HOJE ou no FUTURO, SEMPRE será PENDING
+        # Só procura placar se o jogo foi ONTEM ou antes
+        today = datetime.now()
+        is_future_or_today = True
         
         if match_date != "N/A":
-             if match_date > today_str:
-                 is_future_game = True
-             elif match_date == today_str:
-                 # Se é hoje, verifica a hora (se possível), mas por segurança mantém pending se não tiver certeza
-                 current_hour = datetime.now().strftime("%H:%M")
-                 if match_time > current_hour:
-                     is_future_game = True
-
-        if not is_future_game:
-            # Só procura placar se o jogo já deveria ter começado
-            # E procura APENAS dentro do cabeçalho do jogo, não na página toda
-            header = soup.find('div', class_='stats-match-header')
-            if header:
-                # Procura números grandes isolados ou padrão X - Y dentro do header
-                score_pattern = re.compile(r'(\d+)\s*[-:]\s*(\d+)')
-                # Tenta achar no título ou divs de destaque do header
-                result_div = header.select_one('.match-score, .result, .score-time')
+            try:
+                # Converte apenas a DATA (ignora hora inicialmente)
+                match_date_obj = datetime.strptime(match_date, "%Y-%m-%d").date()
+                today_date = today.date()
                 
-                if result_div:
-                    s_txt = result_div.get_text(strip=True)
-                    m = score_pattern.search(s_txt)
-                    if m:
-                        status = f"{m.group(1)} - {m.group(2)}"
+                # Se o jogo é HOJE
+                if match_date_obj == today_date:
+                    # Verifica a HORA para ter certeza absoluta
+                    try:
+                        match_datetime = datetime.strptime(f"{match_date} {match_time}", "%Y-%m-%d %H:%M")
+                        # Adiciona margem de 2 horas (tempo do jogo) para considerar finalizado
+                        if match_datetime > (today - timedelta(hours=2)):
+                            is_future_or_today = True
+                            status = "PENDING"
+                        else:
+                            is_future_or_today = False
+                    except:
+                        # Se falhar, assume que ainda não aconteceu
+                        is_future_or_today = True
+                        status = "PENDING"
+                
+                # Se o jogo é no FUTURO
+                elif match_date_obj > today_date:
+                    is_future_or_today = True
+                    status = "PENDING"
+                
+                # Se o jogo foi ONTEM ou antes
+                else:
+                    is_future_or_today = False
+            except:
+                # Em caso de erro, sempre assume futuro (segurança)
+                is_future_or_today = True
+                status = "PENDING"
+        
+        # PROTEÇÃO 2: Só busca placar se o jogo foi DEFINITIVAMENTE no passado
+        # E mesmo assim, com restrições severas
+        if not is_future_or_today and match_date != "N/A":
+            # Busca APENAS em áreas muito específicas do cabeçalho
+            # NUNCA busca em áreas de H2H, histórico, estatísticas
+            header = soup.find('div', class_='stats-match-header')
+            
+            if header:
+                # Remove qualquer seção de H2H/histórico que possa estar no header
+                for unwanted in header.select('.h2h, .historico, .confrontos, .ultimos-jogos, [class*="history"]'):
+                    unwanted.decompose()
+                
+                # Procura APENAS por elementos que contenham "resultado" ou "placar" no nome da classe
+                score_elem = header.select_one('[class*="result"], [class*="score"], [class*="final"]')
+                
+                if score_elem:
+                    score_text = score_elem.get_text(strip=True)
+                    # Aceita APENAS formato exato X - Y (números de 0-9)
+                    score_match = re.search(r'^\s*([0-9])\s*-\s*([0-9])\s*
         
         return {
             "match_url": url,
@@ -204,16 +230,95 @@ def save(data):
 
 def main():
     init_db()
-    print("🚀 Iniciando coleta (v3 Corrigida)...")
+    print("🚀 Iniciando coleta (v4 - Proteção Anti-H2H)...")
+    print(f"⏰ Horário atual: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+    
     for p in range(1, 4):
         links = get_previews(page=p)
         if not links: break
+        print(f"\n📄 Página {p}: {len(links)} jogos encontrados")
+        
         for link in links:
             data = parse_preview(link)
             if data:
                 save(data)
-                print(f"✅ {data['home_team']} x {data['away_team']} -> Status: {data['status']}")
-    print("🏁 Finalizado.")
+                print(f"✅ {data['home_team']} x {data['away_team']} -> {data['status']}")
+    
+    print("\n🏁 Finalizado.")
+
+if __name__ == "__main__":
+    main(), score_text)
+                    if score_match:
+                        status = f"{score_match.group(1)} - {score_match.group(2)}"
+        
+        # Log de debug melhorado
+        print(f"   📅 {match_date} {match_time} | Futuro/Hoje: {is_future_or_today} | Status: {status}")
+        
+        return {
+            "match_url": url,
+            "date_collected": datetime.now().strftime("%Y-%m-%d"),
+            "match_date": match_date,
+            "match_time": match_time,
+            "league": league,
+            "home_team": home_team,
+            "away_team": away_team,
+            "selection": selection,
+            "odd": odd,
+            "status": status
+        }
+    except Exception as e:
+        print(f"Erro ao processar {url}: {e}")
+        return None
+
+def month_to_num(month_name):
+    months = {
+        'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04',
+        'maio': '05', 'junho': '06', 'julho': '07', 'agosto': '08',
+        'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12',
+        'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05',
+        'jun': '06', 'jul': '07', 'ago': '08', 'set': '09', 'out': '10',
+        'nov': '11', 'dez': '12'
+    }
+    return months.get(month_name.lower(), '01')
+
+def save(data):
+    if not data or data['selection'] == "Análise sem tip clara": 
+        return
+        
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    try:
+        c.execute('''
+            INSERT OR REPLACE INTO predictions 
+            (match_url, date_collected, match_date, match_time, league, home_team, away_team, selection, odd, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data['match_url'], data['date_collected'], data['match_date'], data['match_time'],
+            data['league'], data['home_team'], data['away_team'], data['selection'], data['odd'], data['status']
+        ))
+        conn.commit()
+    except Exception as e:
+        print(f"Erro banco: {e}")
+    finally:
+        conn.close()
+
+def main():
+    init_db()
+    print("🚀 Iniciando coleta (v4 - Proteção Anti-H2H)...")
+    print(f"⏰ Horário atual: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+    
+    for p in range(1, 4):
+        links = get_previews(page=p)
+        if not links: break
+        print(f"\n📄 Página {p}: {len(links)} jogos encontrados")
+        
+        for link in links:
+            data = parse_preview(link)
+            if data:
+                save(data)
+                print(f"✅ {data['home_team']} x {data['away_team']} -> {data['status']}")
+    
+    print("\n🏁 Finalizado.")
 
 if __name__ == "__main__":
     main()
