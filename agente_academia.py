@@ -16,6 +16,7 @@ HEADERS = {
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    # Adicionando a coluna 'odd' explicitamente
     c.execute('''
         CREATE TABLE IF NOT EXISTS predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,15 +27,17 @@ def init_db():
             home_team TEXT,
             away_team TEXT,
             selection TEXT, 
+            odd REAL,
             status TEXT DEFAULT 'PENDING'
         )
     ''')
     conn.commit()
     conn.close()
 
-def get_previews():
+def get_previews(page=1):
+    url = f"{PREVIEWS_URL}/index/page:{page}" if page > 1 else PREVIEWS_URL
     try:
-        response = requests.get(PREVIEWS_URL, headers=HEADERS)
+        response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         links = []
         for a in soup.select('a[href*="/stats/match/"]'):
@@ -43,7 +46,7 @@ def get_previews():
                 if full_link not in links:
                     links.append(full_link)
         return links
-    except Exception as e:
+    except Exception:
         return []
 
 def parse_preview(url):
@@ -51,9 +54,8 @@ def parse_preview(url):
         response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Extrair Times
-        home_team = "Time A"
-        away_team = "Time B"
+        # 1. Times
+        home_team, away_team = "Time A", "Time B"
         url_parts = url.split('/')
         if len(url_parts) >= 8:
             home_team = url_parts[-4].replace('-', ' ').title()
@@ -69,48 +71,49 @@ def parse_preview(url):
                     home_team, away_team = parts[0].strip(), parts[1].strip()
                     break
 
-        # 2. Extrair Data
+        # 2. Data
         match_date = "N/A"
         for tag in soup.find_all(['span', 'div', 'p']):
-            txt = tag.get_text()
-            m = re.search(r'(\d{1,2}\s+\w+\s+\d{4})', txt)
+            m = re.search(r'(\d{1,2}\s+\w+\s+\d{4})', tag.get_text())
             if m:
                 match_date = m.group(1)
                 break
         
-        # 3. Extrair Campeonato
+        # 3. Campeonato
         league = "Geral"
         bc = soup.select('.breadcrumbs li')
         if len(bc) >= 4:
             liga_raw = bc[3].get_text(strip=True).replace("»", "").strip()
-            if " vs " in liga_raw.lower() or " - " in liga_raw:
-                league = bc[2].get_text(strip=True).replace("»", "").strip()
-            else:
-                league = liga_raw
+            league = bc[2].get_text(strip=True).replace("»", "").strip() if " vs " in liga_raw.lower() else liga_raw
         elif len(bc) >= 3:
             league = bc[2].get_text(strip=True).replace("»", "").strip()
 
-        # 4. Extrair Palpite (Limpeza Definitiva)
-        prediction = "Não encontrado"
+        # 4. Prognóstico e Odd
+        selection = "Não encontrado"
+        odd = 0.0
         editor = soup.find(string=re.compile("Sugestão do editor"))
         if editor:
             container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
-                txt = container.get_text(" ", strip=True)
-                # Remove prefixos
-                txt = txt.replace("Sugestão do editor", "").replace("Pub", "").strip()
-                # Pega apenas até o final da Odd
-                match = re.search(r'(.*?Odd\s*\d+\.\d+)', txt)
-                if match:
-                    prediction = match.group(1).strip()
+                txt = container.get_text(" ", strip=True).replace("Sugestão do editor", "").replace("Pub", "").strip()
+                # Extrai a Odd
+                odd_match = re.search(r'Odd\s*(\d+\.\d+)', txt)
+                if odd_match:
+                    odd = float(odd_match.group(1))
+                    selection = txt.split(odd_match.group(0))[0].strip()
                 else:
-                    # Fallback: remove textos legais comuns
-                    txt = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
-                    prediction = txt
+                    selection = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
         
-        if prediction == "Não encontrado" or len(prediction) < 5:
+        if selection == "Não encontrado":
             box = soup.select_one('.prediction-box, .bet-suggestion')
-            if box: prediction = box.get_text(strip=True)
+            if box: selection = box.get_text(strip=True)
+
+        # 5. Status
+        status = "PENDING"
+        score_tag = soup.select_one('.match-score, .score')
+        if score_tag:
+            s_txt = score_tag.get_text(strip=True)
+            if "-" in s_txt and len(s_txt) < 10: status = s_txt
 
         return {
             "match_url": url,
@@ -119,34 +122,37 @@ def parse_preview(url):
             "league": league,
             "home_team": home_team,
             "away_team": away_team,
-            "prediction": prediction,
-            "status": "PENDING"
+            "selection": selection,
+            "odd": odd,
+            "status": status
         }
-    except Exception as e:
+    except Exception:
         return None
 
 def save(data):
-    if not data or "Não encontrado" in data['prediction']: return
+    if not data or "Não encontrado" in data['selection']: return
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     try:
         c.execute('''
             INSERT OR REPLACE INTO predictions 
-            (match_url, date_collected, match_date, league, home_team, away_team, selection, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (match_url, date_collected, match_date, league, home_team, away_team, selection, odd, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (data['match_url'], data['date_collected'], data['match_date'], data['league'], 
-              data['home_team'], data['away_team'], data['prediction'], data['status']))
+              data['home_team'], data['away_team'], data['selection'], data['odd'], data['status']))
         conn.commit()
-        print(f"✅ {data['league']} | {data['home_team']} X {data['away_team']} | {data['prediction']}")
     finally:
         conn.close()
 
 def main():
     init_db()
-    links = get_previews()
-    for link in links:
-        data = parse_preview(link)
-        save(data)
+    # Coleta várias páginas para pegar o histórico desde o dia 01
+    for p in range(1, 6):
+        links = get_previews(page=p)
+        if not links: break
+        for link in links:
+            data = parse_preview(link)
+            save(data)
 
 if __name__ == "__main__":
     main()
