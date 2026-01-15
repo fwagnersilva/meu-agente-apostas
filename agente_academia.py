@@ -157,7 +157,7 @@ def main():
     init_db()
     # Coleta 10 páginas para garantir histórico desde o dia 01
     print("🚀 Iniciando coleta profunda de histórico...")
-    for p in range(1, 11):
+    for p in range(1, 21):
         print(f"📄 Processando página {p}...")
         links = get_previews(page=p)
         if not links: break

@@ -44,21 +44,35 @@ else:
     df['Prognóstico'] = [p[0] for p in processed]
     df['Odd'] = [p[1] for p in processed]
 
+    # Lógica de Data para separação
+    # Formato esperado: "14 janeiro 2026"
+    hoje_str = datetime.now().strftime("%d %B %Y").lower()
+    # Tradução simples para português se necessário (Streamlit/Python pode variar)
+    meses = {
+        "january": "janeiro", "february": "fevereiro", "march": "março", 
+        "april": "abril", "may": "maio", "june": "junho", 
+        "july": "julho", "august": "agosto", "september": "setembro", 
+        "october": "outubro", "november": "novembro", "december": "dezembro"
+    }
+    for eng, pt in meses.items():
+        hoje_str = hoje_str.replace(eng, pt)
+
+    # Separação dos DataFrames
+    df_hoje = df[df['Data'].str.lower() == hoje_str]
+    df_historico = df[df['Data'].str.lower() != hoje_str]
+
     # --- NAVEGAÇÃO ---
-    aba1, aba2 = st.tabs(["📅 Jogos de Hoje", "📚 Histórico Completo"])
+    aba1, aba2 = st.tabs(["📅 Jogos de Hoje", "📚 Histórico (Dias Anteriores)"])
 
     with aba1:
-        st.header("Jogos do Dia")
-        hoje_str = datetime.now().strftime("%d %B %Y")
-        # Filtra por hoje (ou data mais recente)
-        df_hoje = df[df['Data'].str.contains(datetime.now().strftime("%d"), na=False)]
+        st.header(f"Jogos de Hoje ({hoje_str.title()})")
         if df_hoje.empty:
-            df_hoje = df.head(10) # Fallback para os mais recentes
-        
-        st.dataframe(
-            df_hoje[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
-            hide_index=True, use_container_width=True
-        )
+            st.info("Nenhum jogo encontrado para a data de hoje até o momento.")
+        else:
+            st.dataframe(
+                df_hoje[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
+                hide_index=True, use_container_width=True
+            )
 
     with aba2:
         st.header("Histórico de Prognósticos")
@@ -66,27 +80,31 @@ else:
         # Filtros na barra lateral apenas para o histórico
         st.sidebar.header("🔍 Filtros do Histórico")
         
-        dias = sorted(df['Data'].unique(), reverse=True)
+        dias = sorted(df_historico['Data'].unique(), reverse=True)
         dia_sel = st.sidebar.selectbox("Selecionar Dia", options=["Todos"] + dias)
-        df_hist = df.copy()
+        
+        df_display = df_historico.copy()
         if dia_sel != "Todos":
-            df_hist = df_hist[df_hist['Data'] == dia_sel]
+            df_display = df_display[df_display['Data'] == dia_sel]
 
-        campeonatos = sorted(df_hist['Campeonato'].unique())
+        campeonatos = sorted(df_display['Campeonato'].unique())
         camp_sel = st.sidebar.multiselect("Campeonato", options=campeonatos)
         if camp_sel:
-            df_hist = df_hist[df_hist['Campeonato'].isin(camp_sel)]
+            df_display = df_display[df_display['Campeonato'].isin(camp_sel)]
 
-        min_odd = float(df_hist['Odd'].min())
-        max_odd = float(df_hist['Odd'].max())
+        min_odd = float(df_display['Odd'].min()) if not df_display.empty else 0.0
+        max_odd = float(df_display['Odd'].max()) if not df_display.empty else 5.0
         if max_odd > min_odd:
             odd_range = st.sidebar.slider("Filtrar por Odd", min_odd, max_odd, (min_odd, max_odd))
-            df_hist = df_hist[(df_hist['Odd'] >= odd_range[0]) & (df_hist['Odd'] <= odd_range[1])]
+            df_display = df_display[(df_display['Odd'] >= odd_range[0]) & (df_display['Odd'] <= odd_range[1])]
 
-        st.dataframe(
-            df_hist[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
-            hide_index=True, use_container_width=True
-        )
+        if df_display.empty:
+            st.info("Nenhum dado histórico encontrado com os filtros selecionados.")
+        else:
+            st.dataframe(
+                df_display[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
+                hide_index=True, use_container_width=True
+            )
 
     if st.button("🔄 Atualizar Dados"):
         st.rerun()
