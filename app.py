@@ -3,20 +3,14 @@ import sqlite3
 import pandas as pd
 import os
 import re
+from datetime import datetime
 
 st.set_page_config(page_title="Monitor de Apostas", layout="wide")
 
-st.title("⚽ Monitor de Prognósticos")
-
 def process_prediction(text):
-    """Limpa o texto do palpite e extrai a Odd se existir."""
     if not text: return "", 0.0
-    
-    # Limpeza de prefixos e sufixos
     clean_text = text.replace("Sugestão do editor", "").replace("Pub", "").strip()
     clean_text = clean_text.split("Aposte aqui")[0].split("As odds podem")[0].strip()
-    
-    # Tenta extrair a Odd (ex: Odd 1.75 ou apenas 1.75 no final)
     odd = 0.0
     odd_match = re.search(r'Odd\s*(\d+\.\d+)', clean_text)
     if odd_match:
@@ -27,7 +21,6 @@ def process_prediction(text):
         if decimal_match:
             odd = float(decimal_match.group(1))
             clean_text = clean_text.replace(decimal_match.group(1), "").strip()
-            
     return clean_text, odd
 
 if not os.path.exists("apostas_academia.db"):
@@ -47,54 +40,53 @@ else:
     df = pd.read_sql_query(query, conn)
     conn.close()
 
-    # Processamento dos dados para separar Prognóstico e Odd
     processed = df['Raw_Selection'].apply(process_prediction)
     df['Prognóstico'] = [p[0] for p in processed]
     df['Odd'] = [p[1] for p in processed]
 
-    # --- BARRA LATERAL (FILTROS) ---
-    st.sidebar.header("🔍 Filtros Avançados")
-    
-    # Filtro por Dia
-    dias = sorted(df['Data'].unique(), reverse=True)
-    dia_sel = st.sidebar.selectbox("Selecionar Dia", options=["Todos"] + dias)
-    if dia_sel != "Todos":
-        df = df[df['Data'] == dia_sel]
+    # --- NAVEGAÇÃO ---
+    aba1, aba2 = st.tabs(["📅 Jogos de Hoje", "📚 Histórico Completo"])
 
-    # Filtro por Campeonato
-    campeonatos = sorted(df['Campeonato'].unique())
-    camp_sel = st.sidebar.multiselect("Campeonato", options=campeonatos)
-    if camp_sel:
-        df = df[df['Campeonato'].isin(camp_sel)]
+    with aba1:
+        st.header("Jogos do Dia")
+        hoje_str = datetime.now().strftime("%d %B %Y")
+        # Filtra por hoje (ou data mais recente)
+        df_hoje = df[df['Data'].str.contains(datetime.now().strftime("%d"), na=False)]
+        if df_hoje.empty:
+            df_hoje = df.head(10) # Fallback para os mais recentes
+        
+        st.dataframe(
+            df_hoje[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
+            hide_index=True, use_container_width=True
+        )
 
-    # Filtro por Prognóstico
-    prognosticos = sorted(df['Prognóstico'].unique())
-    prog_sel = st.sidebar.multiselect("Prognóstico", options=prognosticos)
-    if prog_sel:
-        df = df[df['Prognóstico'].isin(prog_sel)]
+    with aba2:
+        st.header("Histórico de Prognósticos")
+        
+        # Filtros na barra lateral apenas para o histórico
+        st.sidebar.header("🔍 Filtros do Histórico")
+        
+        dias = sorted(df['Data'].unique(), reverse=True)
+        dia_sel = st.sidebar.selectbox("Selecionar Dia", options=["Todos"] + dias)
+        df_hist = df.copy()
+        if dia_sel != "Todos":
+            df_hist = df_hist[df_hist['Data'] == dia_sel]
 
-    # Filtro por Odd
-    min_odd = float(df['Odd'].min())
-    max_odd = float(df['Odd'].max())
-    if max_odd > min_odd:
-        odd_range = st.sidebar.slider("Filtrar por Odd", min_odd, max_odd, (min_odd, max_odd))
-        df = df[(df['Odd'] >= odd_range[0]) & (df['Odd'] <= odd_range[1])]
+        campeonatos = sorted(df_hist['Campeonato'].unique())
+        camp_sel = st.sidebar.multiselect("Campeonato", options=campeonatos)
+        if camp_sel:
+            df_hist = df_hist[df_hist['Campeonato'].isin(camp_sel)]
 
-    # --- EXIBIÇÃO PRINCIPAL ---
-    cols_to_show = ['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']
-    st.dataframe(
-        df[cols_to_show], 
-        column_config={
-            "Data": st.column_config.TextColumn("Data", width="medium"),
-            "Campeonato": st.column_config.TextColumn("Campeonato", width="large"),
-            "Jogo": st.column_config.TextColumn("Jogo", width="large"),
-            "Prognóstico": st.column_config.TextColumn("Prognóstico", width="large"),
-            "Odd": st.column_config.NumberColumn("Odd", format="%.2f"),
-            "Placar/Status": st.column_config.TextColumn("Placar/Status", width="small")
-        },
-        hide_index=True,
-        use_container_width=True
-    )
+        min_odd = float(df_hist['Odd'].min())
+        max_odd = float(df_hist['Odd'].max())
+        if max_odd > min_odd:
+            odd_range = st.sidebar.slider("Filtrar por Odd", min_odd, max_odd, (min_odd, max_odd))
+            df_hist = df_hist[(df_hist['Odd'] >= odd_range[0]) & (df_hist['Odd'] <= odd_range[1])]
+
+        st.dataframe(
+            df_hist[['Data', 'Campeonato', 'Jogo', 'Prognóstico', 'Odd', 'Placar/Status']], 
+            hide_index=True, use_container_width=True
+        )
 
     if st.button("🔄 Atualizar Dados"):
         st.rerun()

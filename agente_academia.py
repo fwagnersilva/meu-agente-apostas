@@ -53,11 +53,8 @@ def parse_preview(url):
         response = requests.get(url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Extrair Times (Lógica Robusta)
-        home_team = "Time A"
-        away_team = "Time B"
-        
-        # Tenta pelo H1 primeiro
+        # 1. Times
+        home_team, away_team = "Time A", "Time B"
         h1 = soup.find('h1')
         if h1:
             title = h1.get_text(strip=True).replace("Prognóstico ", "")
@@ -68,14 +65,13 @@ def parse_preview(url):
                     home_team, away_team = parts[0].strip(), parts[1].strip()
                     break
         
-        # Se ainda for Time A/B, tenta pela URL
         if home_team == "Time A":
             url_parts = url.split('/')
             if len(url_parts) >= 8:
                 home_team = url_parts[-4].replace('-', ' ').title()
                 away_team = url_parts[-3].replace('-', ' ').title()
 
-        # 2. Extrair Data
+        # 2. Data
         match_date = "N/A"
         for tag in soup.find_all(['span', 'div', 'p']):
             txt = tag.get_text()
@@ -84,7 +80,7 @@ def parse_preview(url):
                 match_date = m.group(1)
                 break
         
-        # 3. Extrair Campeonato
+        # 3. Campeonato
         league = "Geral"
         bc = soup.select('.breadcrumbs li')
         if len(bc) >= 4:
@@ -96,27 +92,19 @@ def parse_preview(url):
         elif len(bc) >= 3:
             league = bc[2].get_text(strip=True).replace("»", "").strip()
 
-        # 4. Extrair Prognóstico e Odd
+        # 4. Prognóstico e Odd
         selection = "Não encontrado"
         odd = 0.0
-        
-        # Busca pela "Sugestão do editor"
         editor = soup.find(string=re.compile("Sugestão do editor"))
         if editor:
             container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
-                txt = container.get_text(" ", strip=True)
-                # Limpeza inicial
-                txt = txt.replace("Sugestão do editor", "").replace("Pub", "").strip()
-                txt = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
-                
-                # Tenta extrair a Odd (ex: Odd 1.75 ou apenas 1.75 no final)
+                txt = container.get_text(" ", strip=True).replace("Sugestão do editor", "").replace("Pub", "").strip()
                 odd_match = re.search(r'Odd\s*(\d+\.\d+)', txt)
                 if odd_match:
                     odd = float(odd_match.group(1))
                     selection = txt.split(odd_match.group(0))[0].strip()
                 else:
-                    # Tenta achar um decimal no final
                     decimal_match = re.search(r'(\d+\.\d+)$', txt)
                     if decimal_match:
                         odd = float(decimal_match.group(1))
@@ -124,7 +112,6 @@ def parse_preview(url):
                     else:
                         selection = txt
         
-        # Fallback se não achou nada
         if selection == "Não encontrado" or len(selection) < 3:
             box = soup.select_one('.prediction-box, .bet-suggestion')
             if box: selection = box.get_text(strip=True)
@@ -163,17 +150,21 @@ def save(data):
         ''', (data['match_url'], data['date_collected'], data['match_date'], data['league'], 
               data['home_team'], data['away_team'], data['selection'], data['odd'], data['status']))
         conn.commit()
-        print(f"✅ {data['home_team']} X {data['away_team']} | {data['selection']} | Odd: {data['odd']}")
     finally:
         conn.close()
 
 def main():
     init_db()
-    for p in range(1, 3): # Coleta 2 páginas para ser rápido e eficiente
+    # Coleta 10 páginas para garantir histórico desde o dia 01
+    print("🚀 Iniciando coleta profunda de histórico...")
+    for p in range(1, 11):
+        print(f"📄 Processando página {p}...")
         links = get_previews(page=p)
+        if not links: break
         for link in links:
             data = parse_preview(link)
             save(data)
+    print("🏁 Coleta finalizada.")
 
 if __name__ == "__main__":
     main()
