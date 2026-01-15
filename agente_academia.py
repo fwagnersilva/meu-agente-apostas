@@ -90,36 +90,27 @@ def parse_preview(url):
         elif len(bc) >= 3:
             league = bc[2].get_text(strip=True).replace("»", "").strip()
 
-        # 4. Extrair Palpite (Limpeza Final)
+        # 4. Extrair Palpite (Limpeza Definitiva)
         prediction = "Não encontrado"
         editor = soup.find(string=re.compile("Sugestão do editor"))
         if editor:
             container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
                 txt = container.get_text(" ", strip=True)
-                # Remove prefixos e sufixos conhecidos
+                # Remove prefixos
                 txt = txt.replace("Sugestão do editor", "").replace("Pub", "").strip()
-                txt = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
-                
-                # Regex para pegar a Dica e a Odd
-                # Ex: "Menos de 2,5 gols Odd 1.75"
-                match = re.search(r'^(.*?)(Odd\s*\d+\.\d+)', txt)
+                # Pega apenas até o final da Odd
+                match = re.search(r'(.*?Odd\s*\d+\.\d+)', txt)
                 if match:
-                    prediction = f"{match.group(1).strip()} {match.group(2).strip()}"
+                    prediction = match.group(1).strip()
                 else:
+                    # Fallback: remove textos legais comuns
+                    txt = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
                     prediction = txt
         
         if prediction == "Não encontrado" or len(prediction) < 5:
             box = soup.select_one('.prediction-box, .bet-suggestion')
             if box: prediction = box.get_text(strip=True)
-
-        # 5. Status
-        status = "PENDING"
-        score_tag = soup.select_one('.match-score, .score')
-        if score_tag:
-            s_txt = score_tag.get_text(strip=True)
-            if "-" in s_txt and len(s_txt) < 10:
-                status = s_txt
 
         return {
             "match_url": url,
@@ -129,7 +120,7 @@ def parse_preview(url):
             "home_team": home_team,
             "away_team": away_team,
             "prediction": prediction,
-            "status": status
+            "status": "PENDING"
         }
     except Exception as e:
         return None
