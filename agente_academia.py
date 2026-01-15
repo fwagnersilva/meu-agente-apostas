@@ -16,7 +16,6 @@ HEADERS = {
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Adicionando a coluna 'odd' explicitamente
     c.execute('''
         CREATE TABLE IF NOT EXISTS predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,11 +55,6 @@ def parse_preview(url):
         
         # 1. Times
         home_team, away_team = "Time A", "Time B"
-        url_parts = url.split('/')
-        if len(url_parts) >= 8:
-            home_team = url_parts[-4].replace('-', ' ').title()
-            away_team = url_parts[-3].replace('-', ' ').title()
-        
         h1 = soup.find('h1')
         if h1:
             title = h1.get_text(strip=True).replace("Prognóstico ", "")
@@ -96,24 +90,23 @@ def parse_preview(url):
             container = editor.find_parent(['td', 'div', 'tr', 'p'])
             if container:
                 txt = container.get_text(" ", strip=True).replace("Sugestão do editor", "").replace("Pub", "").strip()
-                # Extrai a Odd
+                # Procura por "Odd 1.75" ou apenas "1.75" no final
                 odd_match = re.search(r'Odd\s*(\d+\.\d+)', txt)
                 if odd_match:
                     odd = float(odd_match.group(1))
                     selection = txt.split(odd_match.group(0))[0].strip()
                 else:
-                    selection = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
+                    # Tenta achar qualquer número decimal no final
+                    decimal_match = re.search(r'(\d+\.\d+)$', txt)
+                    if decimal_match:
+                        odd = float(decimal_match.group(1))
+                        selection = txt.replace(decimal_match.group(1), "").strip()
+                    else:
+                        selection = txt.split("Aposte aqui")[0].split("As odds podem")[0].strip()
         
         if selection == "Não encontrado":
             box = soup.select_one('.prediction-box, .bet-suggestion')
             if box: selection = box.get_text(strip=True)
-
-        # 5. Status
-        status = "PENDING"
-        score_tag = soup.select_one('.match-score, .score')
-        if score_tag:
-            s_txt = score_tag.get_text(strip=True)
-            if "-" in s_txt and len(s_txt) < 10: status = s_txt
 
         return {
             "match_url": url,
@@ -124,7 +117,7 @@ def parse_preview(url):
             "away_team": away_team,
             "selection": selection,
             "odd": odd,
-            "status": status
+            "status": "PENDING"
         }
     except Exception:
         return None
@@ -146,7 +139,6 @@ def save(data):
 
 def main():
     init_db()
-    # Coleta várias páginas para pegar o histórico desde o dia 01
     for p in range(1, 6):
         links = get_previews(page=p)
         if not links: break
