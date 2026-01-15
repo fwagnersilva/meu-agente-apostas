@@ -2,20 +2,22 @@ name: Coleta Diária Academia
 
 on:
   schedule:
-    - cron: '0 11 * * *' # Roda todo dia às 11:00 UTC (8:00 Brasil)
-  workflow_dispatch: # Permite rodar manualmente clicando num botão
+    - cron: '0 11 * * *' # Roda todo dia às 11:00 UTC (08:00 Brasil)
+  workflow_dispatch: # Permite rodar manualmente clicando no botão
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
+    permissions: # Permissões explícitas para evitar erro 403
       contents: write
     steps:
       - name: Baixar código
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3 # Versão mais atualizada
+        with:
+          fetch-depth: 0 # Baixa todo o histórico para evitar conflitos
 
       - name: Instalar Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
@@ -31,5 +33,8 @@ jobs:
           git config --global user.name 'Agente Bot'
           git config --global user.email 'bot@noreply.github.com'
           git add apostas_academia.db
-          git commit -m "Atualização diária de apostas" || echo "Sem mudanças para commitar"
+          # O "|| echo" evita erro se não houver mudanças no dia
+          git commit -m "Atualização diária de apostas" || echo "Nada para commitar"
+          # CORREÇÃO: Baixa mudanças remotas antes de enviar as locais
+          git pull --rebase origin main
           git push
