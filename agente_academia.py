@@ -178,76 +178,7 @@ def parse_preview(url):
                 if score_elem:
                     score_text = score_elem.get_text(strip=True)
                     # Aceita APENAS formato exato X - Y (números de 0-9)
-                    score_match = re.search(r'^\s*([0-9])\s*-\s*([0-9])\s*
-        
-        return {
-            "match_url": url,
-            "date_collected": datetime.now().strftime("%Y-%m-%d"),
-            "match_date": match_date,
-            "match_time": match_time,
-            "league": league,
-            "home_team": home_team,
-            "away_team": away_team,
-            "selection": selection,
-            "odd": odd,
-            "status": status
-        }
-    except Exception as e:
-        print(f"Erro ao processar {url}: {e}")
-        return None
-
-def month_to_num(month_name):
-    months = {
-        'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04',
-        'maio': '05', 'junho': '06', 'julho': '07', 'agosto': '08',
-        'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12',
-        'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05',
-        'jun': '06', 'jul': '07', 'ago': '08', 'set': '09', 'out': '10',
-        'nov': '11', 'dez': '12'
-    }
-    return months.get(month_name.lower(), '01')
-
-def save(data):
-    if not data or data['selection'] == "Análise sem tip clara": 
-        return
-        
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    try:
-        c.execute('''
-            INSERT OR REPLACE INTO predictions 
-            (match_url, date_collected, match_date, match_time, league, home_team, away_team, selection, odd, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data['match_url'], data['date_collected'], data['match_date'], data['match_time'],
-            data['league'], data['home_team'], data['away_team'], data['selection'], data['odd'], data['status']
-        ))
-        conn.commit()
-    except Exception as e:
-        print(f"Erro banco: {e}")
-    finally:
-        conn.close()
-
-def main():
-    init_db()
-    print("🚀 Iniciando coleta (v4 - Proteção Anti-H2H)...")
-    print(f"⏰ Horário atual: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
-    
-    for p in range(1, 4):
-        links = get_previews(page=p)
-        if not links: break
-        print(f"\n📄 Página {p}: {len(links)} jogos encontrados")
-        
-        for link in links:
-            data = parse_preview(link)
-            if data:
-                save(data)
-                print(f"✅ {data['home_team']} x {data['away_team']} -> {data['status']}")
-    
-    print("\n🏁 Finalizado.")
-
-if __name__ == "__main__":
-    main(), score_text)
+                    score_match = re.search(r'^([0-9])\s*-\s*([0-9])$', score_text)
                     if score_match:
                         status = f"{score_match.group(1)} - {score_match.group(2)}"
         
