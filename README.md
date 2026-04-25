@@ -346,7 +346,9 @@ docker-compose exec backend alembic downgrade -1
 |--------|----------|-----------|
 | GET | `/api/v1/videos` | Listar vídeos |
 | GET | `/api/v1/videos/{id}` | Detalhes do vídeo |
-| GET | `/api/v1/video-analyses/{id}` | Análise completa do vídeo |
+| GET | `/api/v1/video-analyses/{id}` | Análise completa do vídeo (com transcript e segmentos) |
+| GET | `/api/v1/video-analyses/by-slug/{slug}` | Análise por slug de URL |
+| GET | `/api/v1/video-analyses/by-video/{video_id}` | Todas as análises de um vídeo |
 
 ### Jogos e Ideias *(Fase 4)*
 
@@ -371,7 +373,7 @@ docker-compose exec backend alembic downgrade -1
 |------|----------|--------|
 | **Fase 1** | Estrutura do projeto, autenticação JWT, banco de dados, modelos, migrations, seed | ✅ Concluída |
 | **Fase 2** | CRUD de tipsters e canais, monitoramento periódico via YouTube API | ✅ Concluída |
-| **Fase 3** | Pipeline de processamento: transcrição, normalização, segmentação | 🔲 Pendente |
+| **Fase 3** | Pipeline de processamento: transcrição, normalização, segmentação | ✅ Concluída |
 | **Fase 4** | Extração de ideias via LLM, APIs de vídeos/jogos/ideias, revisão humana | 🔲 Pendente |
 | **Fase 5** | Frontend completo: login, dashboard, tipsters, jogos, vídeos, revisão | 🔲 Pendente |
 | **Fase 6** | Registro de resultados, avaliação automática, auditoria | 🔲 Pendente |
