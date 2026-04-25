@@ -330,9 +330,15 @@ docker-compose exec backend alembic downgrade -1
 |--------|----------|-----------|
 | GET | `/api/v1/tipsters` | Listar tipsters |
 | GET | `/api/v1/tipsters/{id}` | Detalhes + métricas |
+| POST | `/api/v1/tipsters` | Criar tipster (admin) |
+| PATCH | `/api/v1/tipsters/{id}` | Editar tipster (admin) |
+| DELETE | `/api/v1/tipsters/{id}` | Inativar tipster (admin) |
 | POST | `/api/v1/channels` | Cadastrar canal |
 | GET | `/api/v1/channels` | Listar canais |
 | PATCH | `/api/v1/channels/{id}` | Editar canal |
+| POST | `/api/v1/channels/{id}/pause` | Pausar monitoramento |
+| POST | `/api/v1/channels/{id}/activate` | Ativar monitoramento |
+| POST | `/api/v1/channels/{id}/trigger-monitor` | Disparar check manual |
 
 ### Vídeos e Análises *(Fase 4)*
 
@@ -364,7 +370,7 @@ docker-compose exec backend alembic downgrade -1
 | Fase | Conteúdo | Status |
 |------|----------|--------|
 | **Fase 1** | Estrutura do projeto, autenticação JWT, banco de dados, modelos, migrations, seed | ✅ Concluída |
-| **Fase 2** | CRUD de tipsters e canais, monitoramento periódico via YouTube API | 🔲 Pendente |
+| **Fase 2** | CRUD de tipsters e canais, monitoramento periódico via YouTube API | ✅ Concluída |
 | **Fase 3** | Pipeline de processamento: transcrição, normalização, segmentação | 🔲 Pendente |
 | **Fase 4** | Extração de ideias via LLM, APIs de vídeos/jogos/ideias, revisão humana | 🔲 Pendente |
 | **Fase 5** | Frontend completo: login, dashboard, tipsters, jogos, vídeos, revisão | 🔲 Pendente |
