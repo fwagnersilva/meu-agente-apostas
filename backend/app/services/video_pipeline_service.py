@@ -1,4 +1,4 @@
-"""Pipeline de processamento de vídeo — Fase 3.
+"""Pipeline de processamento de vídeo.
 
 Orquestra os passos:
 1. Marcar vídeo como `processing`
@@ -6,11 +6,9 @@ Orquestra os passos:
 3. Normalizar texto
 4. Segmentar em blocos
 5. Salvar transcript + segmentos
-6. Criar VideoAnalysis com status `pending` (pronta para extração na Fase 4)
-7. Atualizar status do vídeo para `analyzed` ou `failed`
-
-A extração de ideias via LLM (Fase 4) é um passo separado que atualiza
-a VideoAnalysis já criada aqui.
+6. Criar VideoAnalysis
+7. Extrair ideias via LLM (ExtractionOrchestratorService)
+8. Atualizar status do vídeo para `analyzed` ou `failed`
 """
 from __future__ import annotations
 
@@ -28,6 +26,7 @@ from app.services.transcript_service import TranscriptService, TranscriptResult
 from app.services.normalization_service import NormalizationService
 from app.services.segmentation_service import SegmentationService, Segment
 from app.services.audit_service import AuditService
+from app.services.extraction_orchestrator_service import ExtractionOrchestratorService
 from app.models.audit import ProcessingJob
 
 logger = logging.getLogger(__name__)
@@ -107,7 +106,7 @@ class VideoPipelineService:
         ]
         await self.transcript_repo.create_segments_bulk(video.id, transcript.id, segments_data)
 
-        # Passo 6 — Criar VideoAnalysis (será preenchida na Fase 4)
+        # Passo 6 — Criar VideoAnalysis
         slug = f"analise-{video.youtube_video_id}-{uuid.uuid4().hex[:8]}"
         analysis = await self.analysis_repo.create(
             video_id=video.id,
@@ -117,12 +116,22 @@ class VideoPipelineService:
             schema_version="v1",
         )
 
-        # Passo 7 — Atualizar canal
+        # Passo 7 — Extração via LLM
         channel = await self.channel_repo.get_by_id(video.channel_id)
+        tipster_id = channel.tipster_id if channel else 0
+        extractor = ExtractionOrchestratorService(self.db)
+        await extractor.run(
+            analysis=analysis,
+            normalized_text=normalized,
+            video_title=video.title,
+            tipster_id=tipster_id,
+        )
+
+        # Passo 8 — Atualizar canal
         if channel:
             await self.channel_repo.update(channel, {"last_video_analyzed_at": now})
 
-        # Passo 8 — Finalizar
+        # Passo 9 — Finalizar
         await self.video_repo.update_status(video, "analyzed")
         await self._finish_job(job, "completed")
         await self.audit.log(
@@ -132,6 +141,7 @@ class VideoPipelineService:
                 "transcript_source": transcript_result.source,
                 "segments": len(segments),
                 "analysis_id": analysis.id,
+                "analysis_status": analysis.analysis_status,
             },
         )
         logger.info(
