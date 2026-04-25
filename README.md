@@ -376,8 +376,8 @@ docker-compose exec backend alembic downgrade -1
 | **Fase 3** | Pipeline de processamento: transcrição, normalização, segmentação | ✅ Concluída |
 | **Fase 4** | Extração de ideias via LLM, APIs de vídeos/jogos/ideias, revisão humana | ✅ Concluída |
 | **Fase 5** | Frontend completo: login, dashboard, tipsters, jogos, vídeos, revisão | ✅ Concluída |
-| **Fase 6** | Registro de resultados, avaliação automática, auditoria | 🔲 Pendente |
-| **Fase 7** | Dashboards analíticos, comparativo de tipsters, métricas avançadas | 🔲 Pendente |
+| **Fase 6** | Registro de resultados, avaliação automática, auditoria | ✅ Concluída |
+| **Fase 7** | Dashboards analíticos, comparativo de tipsters, métricas avançadas | ✅ Concluída |
 
 ---
 
