@@ -6,6 +6,9 @@ from app.api.v1.endpoints.videos import router as videos_router
 from app.api.v1.endpoints.analyses import router as analyses_router
 from app.api.v1.endpoints.games import router as games_router
 from app.api.v1.endpoints.ideas import router as ideas_router
+from app.api.v1.endpoints.results import router as results_router
+from app.api.v1.endpoints.audit import router as audit_router
+from app.api.v1.endpoints.dashboard import router as dashboard_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
@@ -15,3 +18,6 @@ api_router.include_router(videos_router)
 api_router.include_router(analyses_router)
 api_router.include_router(games_router)
 api_router.include_router(ideas_router)
+api_router.include_router(results_router)
+api_router.include_router(audit_router)
+api_router.include_router(dashboard_router)

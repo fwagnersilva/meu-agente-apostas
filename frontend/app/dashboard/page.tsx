@@ -7,35 +7,42 @@ import AppLayout from "../../components/AppLayout";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import Badge from "../../components/Badge";
 import { useApi } from "../../hooks/useApi";
+import { fetchDashboard } from "../../services/dashboard";
 import { fetchGames } from "../../services/games";
-import { fetchTipsters } from "../../services/tipsters";
 import { fetchVideos } from "../../services/videos";
 
-function StatCard({ label, value }: { label: string; value: number | string }) {
+function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <p className="text-sm text-gray-500">{label}</p>
+      <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
       <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+function HitBar({ hits, total }: { hits: number; total: number }) {
+  const pct = total ? Math.round((hits / total) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-gray-100 rounded-full h-2">
+        <div
+          className="bg-indigo-500 h-2 rounded-full"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-600 w-10 text-right">{pct}%</span>
     </div>
   );
 }
 
 export default function DashboardPage() {
   const today = format(new Date(), "yyyy-MM-dd");
+  const { data: dash, loading: dLoading } = useApi(() => fetchDashboard(), []);
   const { data: games, loading: gLoading } = useApi(() => fetchGames(today), [today]);
-  const { data: tipsters, loading: tLoading } = useApi(() => fetchTipsters(), []);
   const { data: videos, loading: vLoading } = useApi(() => fetchVideos({ limit: 5 }), []);
 
-  const loading = gLoading || tLoading || vLoading;
-  const todayGames = games ?? [];
-  const recentVideos = videos ?? [];
-
-  const totalIdeas = todayGames.reduce((acc, g) => acc + g.ideas.length, 0);
-  const actionableIdeas = todayGames.reduce(
-    (acc, g) => acc + g.ideas.filter((i) => i.is_actionable).length,
-    0
-  );
-  const activeTipsters = (tipsters ?? []).filter((t) => t.status === "active").length;
+  const loading = dLoading || gLoading || vLoading;
 
   return (
     <AppLayout>
@@ -50,13 +57,101 @@ export default function DashboardPage() {
         <LoadingSpinner />
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard label="Jogos hoje" value={todayGames.length} />
-            <StatCard label="Ideias hoje" value={totalIdeas} />
-            <StatCard label="Acionáveis hoje" value={actionableIdeas} />
-            <StatCard label="Tipsters ativos" value={activeTipsters} />
+          {/* Global stats */}
+          {dash && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <StatCard
+                label="Tipsters ativos"
+                value={dash.active_tipsters}
+                sub={`de ${dash.total_tipsters} total`}
+              />
+              <StatCard
+                label="Vídeos analisados"
+                value={dash.analyzed_videos}
+                sub={`de ${dash.total_videos} ingeridos`}
+              />
+              <StatCard
+                label="Ideias acionáveis"
+                value={dash.actionable_ideas}
+                sub={`de ${dash.total_ideas} total`}
+              />
+              <StatCard
+                label="Taxa de acerto geral"
+                value={
+                  dash.overall_hit_rate != null
+                    ? `${Math.round(dash.overall_hit_rate * 100)}%`
+                    : "—"
+                }
+                sub={`${dash.evaluated_ideas} avaliadas`}
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* Top tipsters */}
+            {dash && dash.top_tipsters.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-gray-800">Top Tipsters</h2>
+                  <Link href="/tipsters/comparativo" className="text-xs text-indigo-600 hover:underline">
+                    Comparativo completo
+                  </Link>
+                </div>
+                <div className="space-y-3">
+                  {dash.top_tipsters.slice(0, 5).map((t) => (
+                    <div key={t.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <Link
+                          href={`/tipsters/${t.id}`}
+                          className="text-sm text-gray-900 hover:text-indigo-600"
+                        >
+                          {t.display_name ?? t.name}
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <span>{t.actionable_ideas} acion.</span>
+                          {t.evaluated_ideas > 0 && (
+                            <span className="font-medium text-gray-700">
+                              {t.hits}/{t.evaluated_ideas}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <HitBar hits={t.hits} total={t.evaluated_ideas} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ideas by market */}
+            {dash && dash.ideas_by_market.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 p-5">
+                <h2 className="text-sm font-semibold text-gray-800 mb-4">Mercados mais usados</h2>
+                <div className="space-y-3">
+                  {dash.ideas_by_market.slice(0, 6).map((m) => (
+                    <div key={m.market_type}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm text-gray-700">
+                          {m.market_type.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {m.total} ideias
+                          {m.hit_rate != null && (
+                            <span className="ml-1 text-indigo-600">
+                              · {Math.round(m.hit_rate * 100)}% acerto
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <HitBar hits={m.hits} total={m.total} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Today's games */}
           <section className="mb-8">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-gray-800">Jogos de hoje</h2>
@@ -64,11 +159,11 @@ export default function DashboardPage() {
                 Ver todos
               </Link>
             </div>
-            {todayGames.length === 0 ? (
+            {(games ?? []).length === 0 ? (
               <p className="text-sm text-gray-400">Nenhum jogo registrado para hoje.</p>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
-                {todayGames.slice(0, 5).map((game) => (
+                {(games ?? []).slice(0, 5).map((game) => (
                   <Link
                     key={game.id}
                     href={`/games/${game.id}`}
@@ -95,6 +190,7 @@ export default function DashboardPage() {
             )}
           </section>
 
+          {/* Recent videos */}
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-gray-800">Vídeos recentes</h2>
@@ -102,11 +198,11 @@ export default function DashboardPage() {
                 Ver todos
               </Link>
             </div>
-            {recentVideos.length === 0 ? (
+            {(videos ?? []).length === 0 ? (
               <p className="text-sm text-gray-400">Nenhum vídeo processado ainda.</p>
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
-                {recentVideos.map((v) => (
+                {(videos ?? []).map((v) => (
                   <Link
                     key={v.id}
                     href={`/videos/${v.id}`}
