@@ -2,20 +2,14 @@
 
 import { useState } from "react";
 import AppLayout from "../../components/AppLayout";
-import LoadingSpinner from "../../components/LoadingSpinner";
-import EmptyState from "../../components/EmptyState";
+import Card from "../../components/Card";
 import Badge from "../../components/Badge";
+import LoadingSpinner from "../../components/LoadingSpinner";
 import { useApi } from "../../hooks/useApi";
 import { fetchPendingIdeas, reviewIdea } from "../../services/ideas";
 import type { Idea } from "../../services/ideas";
 
-function IdeaReviewCard({
-  idea,
-  onReviewed,
-}: {
-  idea: Idea;
-  onReviewed: () => void;
-}) {
+function IdeaReviewCard({ idea, onReviewed }: { idea: Idea; onReviewed: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,36 +28,30 @@ function IdeaReviewCard({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="flex flex-wrap gap-1.5 mb-3">
+    <Card className="p-5">
+      <div className="flex flex-wrap gap-1.5 mb-4">
         <Badge label={idea.idea_type.replace(/_/g, " ")} color="indigo" />
         <Badge label={idea.market_type.replace(/_/g, " ")} color="blue" />
         <Badge label={`${Math.round(idea.extraction_confidence * 100)}% confiança`} color="yellow" />
       </div>
 
-      <div className="space-y-1 text-sm mb-3">
+      <div className="space-y-1.5 text-sm mb-4">
         {idea.belief_text && (
-          <p>
-            <span className="font-medium text-gray-600">Acredita: </span>
-            <span className="text-gray-800">{idea.belief_text}</span>
-          </p>
+          <p><span className="text-xs font-semibold text-slate-500 uppercase">Acredita</span><br />
+            <span className="text-slate-800">{idea.belief_text}</span></p>
         )}
         {idea.fear_text && (
-          <p>
-            <span className="font-medium text-gray-600">Teme: </span>
-            <span className="text-gray-800">{idea.fear_text}</span>
-          </p>
+          <p><span className="text-xs font-semibold text-slate-500 uppercase">Teme</span><br />
+            <span className="text-slate-800">{idea.fear_text}</span></p>
         )}
         {idea.entry_text && (
-          <p>
-            <span className="font-medium text-green-700">Entrada: </span>
-            <span className="text-green-800">{idea.entry_text}</span>
-          </p>
+          <p><span className="text-xs font-semibold text-emerald-600 uppercase">Entrada</span><br />
+            <span className="text-emerald-800">{idea.entry_text}</span></p>
         )}
       </div>
 
       {idea.source_excerpt && (
-        <blockquote className="pl-3 border-l-2 border-gray-300 text-xs text-gray-500 italic mb-3">
+        <blockquote className="pl-3 border-l-2 border-slate-200 text-xs text-slate-400 italic mb-4">
           {idea.source_excerpt}
         </blockquote>
       )}
@@ -72,29 +60,23 @@ function IdeaReviewCard({
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Notas de revisão (opcional)"
-        className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
+        className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
         rows={2}
       />
 
-      {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
 
       <div className="flex gap-2">
-        <button
-          onClick={() => handle("approve")}
-          disabled={submitting}
-          className="flex-1 bg-green-600 text-white text-sm rounded py-1.5 hover:bg-green-700 disabled:opacity-50"
-        >
+        <button onClick={() => handle("approve")} disabled={submitting}
+          className="flex-1 bg-emerald-600 text-white text-sm rounded-lg py-2 hover:bg-emerald-700 disabled:opacity-50">
           Aprovar
         </button>
-        <button
-          onClick={() => handle("reject")}
-          disabled={submitting}
-          className="flex-1 bg-red-600 text-white text-sm rounded py-1.5 hover:bg-red-700 disabled:opacity-50"
-        >
+        <button onClick={() => handle("reject")} disabled={submitting}
+          className="flex-1 bg-red-500 text-white text-sm rounded-lg py-2 hover:bg-red-600 disabled:opacity-50">
           Rejeitar
         </button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -110,42 +92,39 @@ export default function ReviewPage() {
 
   return (
     <AppLayout>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Revisão Humana</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Ideias com baixa confiança ou ambiguidade aguardando revisão.
-          </p>
+          <h1 className="text-xl font-semibold text-slate-900">Revisão Humana</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Ideias com baixa confiança aguardando revisão.</p>
         </div>
         {!loading && (
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
             {pending.length} pendente{pending.length !== 1 ? "s" : ""}
           </span>
         )}
       </div>
 
       {loading && <LoadingSpinner />}
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+
       {!loading && !error && pending.length === 0 && (
-        <EmptyState message="Nenhuma ideia pendente de revisão. Tudo em ordem!" />
+        <Card className="p-10 text-center">
+          <p className="text-2xl mb-2">✓</p>
+          <p className="text-slate-500 text-sm font-medium">Tudo em ordem!</p>
+          <p className="text-slate-400 text-xs mt-1">Nenhuma ideia pendente de revisão.</p>
+        </Card>
       )}
 
       <div className="space-y-4">
         {pending.map((idea) => (
-          <IdeaReviewCard
-            key={idea.id}
-            idea={idea}
-            onReviewed={() => markReviewed(idea.id)}
-          />
+          <IdeaReviewCard key={idea.id} idea={idea} onReviewed={() => markReviewed(idea.id)} />
         ))}
       </div>
 
       {!loading && reviewed.size > 0 && (
         <div className="mt-6 text-center">
-          <button
-            onClick={() => { setReviewed(new Set()); refetch(); }}
-            className="text-sm text-indigo-600 hover:underline"
-          >
+          <button onClick={() => { setReviewed(new Set()); refetch(); }}
+            className="text-sm text-indigo-600 hover:underline">
             Recarregar fila de revisão
           </button>
         </div>

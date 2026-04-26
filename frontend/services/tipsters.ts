@@ -24,3 +24,8 @@ export async function fetchTipster(id: number): Promise<TipsterWithStats> {
   const { data } = await api.get<TipsterWithStats>(`/tipsters/${id}`);
   return data;
 }
+
+export async function createTipster(payload: { name: string; display_name?: string; bio?: string }): Promise<Tipster> {
+  const { data } = await api.post<Tipster>("/tipsters", payload);
+  return data;
+}
