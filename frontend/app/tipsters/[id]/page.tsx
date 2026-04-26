@@ -10,6 +10,8 @@ import LoadingSpinner from "../../../components/LoadingSpinner";
 import { useApi } from "../../../hooks/useApi";
 import { fetchTipster } from "../../../services/tipsters";
 import { createChannel } from "../../../services/channels";
+import { manualAnalyze } from "../../../services/videos";
+import { useRouter } from "next/navigation";
 
 function AddChannelModal({ tipsterId, onClose, onCreated }: { tipsterId: number; onClose: () => void; onCreated: () => void }) {
   const [channelUrl, setChannelUrl] = useState("");
@@ -94,15 +96,108 @@ function AddChannelModal({ tipsterId, onClose, onCreated }: { tipsterId: number;
   );
 }
 
+function ManualAnalyzeModal({ tipsterId, onClose, onDone }: { tipsterId: number; onClose: () => void; onDone: (result: { video_id: number; games_detected: number; ideas_detected: number }) => void }) {
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [transcript, setTranscript] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!transcript.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await manualAnalyze({
+        tipster_id: tipsterId,
+        title: title.trim() || `Análise ${date}`,
+        video_date: date || undefined,
+        transcript_text: transcript.trim(),
+      });
+      onDone(result);
+      onClose();
+    } catch {
+      setError("Erro ao processar. Verifique se o tipster tem um canal cadastrado.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] flex flex-col">
+        <h2 className="text-base font-semibold text-slate-900 mb-1">Analisar transcrição</h2>
+        <p className="text-xs text-slate-500 mb-5">
+          Cole a transcrição do vídeo abaixo. No YouTube: abra o vídeo → "..." → "Mostrar transcrição" → selecione tudo e copie.
+        </p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 flex-1 min-h-0">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Título do vídeo</label>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder={`Análise ${date}`}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Data do vídeo</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <label className="block text-xs font-medium text-slate-600 mb-1">Transcrição *</label>
+            <textarea
+              value={transcript}
+              onChange={e => setTranscript(e.target.value)}
+              placeholder="Cole aqui a transcrição completa do vídeo..."
+              className="w-full h-64 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-mono"
+              required
+            />
+            <p className="text-xs text-slate-400 mt-1">{transcript.split(/\s+/).filter(Boolean).length} palavras</p>
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 border border-slate-200 text-slate-600 text-sm rounded-lg py-2 hover:bg-slate-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={submitting || !transcript.trim()}
+              className="flex-1 bg-indigo-600 text-white text-sm rounded-lg py-2 hover:bg-indigo-700 disabled:opacity-50">
+              {submitting ? "Analisando com IA..." : "Analisar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function TipsterDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { data: tipster, loading, error, refetch } = useApi(() => fetchTipster(Number(id)), [id]);
   const [showChannel, setShowChannel] = useState(false);
+  const [showAnalyze, setShowAnalyze] = useState(false);
 
   return (
     <AppLayout>
       {showChannel && tipster && (
         <AddChannelModal tipsterId={tipster.id} onClose={() => setShowChannel(false)} onCreated={refetch} />
+      )}
+      {showAnalyze && tipster && (
+        <ManualAnalyzeModal
+          tipsterId={tipster.id}
+          onClose={() => setShowAnalyze(false)}
+          onDone={(r) => router.push(`/videos/${r.video_id}`)}
+        />
       )}
 
       <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-6">
@@ -125,8 +220,12 @@ export default function TipsterDetailPage() {
               <div className="flex items-center gap-2">
                 <Badge label={tipster.status === "active" ? "ativo" : "inativo"} color={tipster.status === "active" ? "green" : "gray"} />
                 <button onClick={() => setShowChannel(true)}
-                  className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700">
+                  className="px-3 py-1.5 border border-slate-200 text-slate-600 text-xs rounded-lg hover:bg-slate-50">
                   + Canal
+                </button>
+                <button onClick={() => setShowAnalyze(true)}
+                  className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700">
+                  Analisar transcrição
                 </button>
               </div>
             </div>

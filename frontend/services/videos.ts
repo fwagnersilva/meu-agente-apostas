@@ -83,3 +83,21 @@ export async function fetchAnalysis(id: number): Promise<VideoAnalysis> {
 export async function reprocessVideo(id: number): Promise<void> {
   await api.post(`/videos/${id}/reprocess`);
 }
+
+export interface ManualAnalysisResult {
+  video_id: number;
+  analysis_id: number;
+  analysis_status: string;
+  games_detected: number;
+  ideas_detected: number;
+}
+
+export async function manualAnalyze(payload: {
+  tipster_id: number;
+  title: string;
+  video_date?: string;
+  transcript_text: string;
+}): Promise<ManualAnalysisResult> {
+  const { data } = await api.post<ManualAnalysisResult>("/videos/manual-analyze", payload);
+  return data;
+}
