@@ -12,22 +12,38 @@ import { fetchTipster } from "../../../services/tipsters";
 import { createChannel } from "../../../services/channels";
 
 function AddChannelModal({ tipsterId, onClose, onCreated }: { tipsterId: number; onClose: () => void; onCreated: () => void }) {
-  const [youtubeChannelId, setYoutubeChannelId] = useState("");
+  const [channelUrl, setChannelUrl] = useState("");
+  const [channelName, setChannelName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function extractChannelId(input: string): string | undefined {
+    const m = input.match(/channel\/(UC[a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    if (input.match(/^UC[a-zA-Z0-9_-]{20,}$/)) return input;
+    return undefined;
+  }
+
+  function buildUrl(input: string): string {
+    if (input.startsWith("http")) return input;
+    if (input.match(/^UC[a-zA-Z0-9_-]{20,}$/)) return `https://www.youtube.com/channel/${input}`;
+    return `https://www.youtube.com/${input.startsWith("@") ? input : "@" + input}`;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const id = youtubeChannelId.trim();
-    if (!id) return;
+    const raw = channelUrl.trim();
+    if (!raw || !channelName.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      await createChannel({ tipster_id: tipsterId, platform: "youtube", platform_channel_id: id });
+      const externalId = extractChannelId(raw);
+      const url = buildUrl(raw);
+      await createChannel({ tipster_id: tipsterId, channel_name: channelName.trim(), channel_url: url, channel_external_id: externalId });
       onCreated();
       onClose();
     } catch {
-      setError("Erro ao adicionar canal. Verifique o ID e tente novamente.");
+      setError("Erro ao adicionar canal. Verifique os dados e tente novamente.");
     } finally {
       setSubmitting(false);
     }
@@ -38,15 +54,25 @@ function AddChannelModal({ tipsterId, onClose, onCreated }: { tipsterId: number;
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 className="text-base font-semibold text-slate-900 mb-2">Adicionar canal do YouTube</h2>
         <p className="text-xs text-slate-500 mb-5">
-          Cole o ID do canal (ex: <code className="bg-slate-100 px-1 rounded">UCxxxxxxxxxxxxxxxxxxxxxx</code>) ou a URL completa do canal.
+          Cole a URL ou ID do canal (ex: <code className="bg-slate-100 px-1 rounded">UCxxxxxx</code> ou <code className="bg-slate-100 px-1 rounded">@TheoBorges</code>).
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">ID ou URL do canal *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Nome do canal *</label>
             <input
-              value={youtubeChannelId}
-              onChange={e => setYoutubeChannelId(e.target.value)}
-              placeholder="UCxxxxxx... ou youtube.com/channel/..."
+              value={channelName}
+              onChange={e => setChannelName(e.target.value)}
+              placeholder="ex: Theo Borges"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">URL ou ID do canal *</label>
+            <input
+              value={channelUrl}
+              onChange={e => setChannelUrl(e.target.value)}
+              placeholder="https://youtube.com/@TheoBorges ou UCxxxxx"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             />
@@ -57,7 +83,7 @@ function AddChannelModal({ tipsterId, onClose, onCreated }: { tipsterId: number;
               className="flex-1 border border-slate-200 text-slate-600 text-sm rounded-lg py-2 hover:bg-slate-50">
               Cancelar
             </button>
-            <button type="submit" disabled={submitting || !youtubeChannelId.trim()}
+            <button type="submit" disabled={submitting || !channelUrl.trim() || !channelName.trim()}
               className="flex-1 bg-indigo-600 text-white text-sm rounded-lg py-2 hover:bg-indigo-700 disabled:opacity-50">
               {submitting ? "Adicionando..." : "Adicionar canal"}
             </button>
