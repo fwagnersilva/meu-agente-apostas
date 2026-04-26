@@ -1,15 +1,17 @@
 """Serviço de transcrição de vídeos do YouTube.
 
 Estratégia em cascata:
-1. YouTube Transcript API (legendas automáticas/manuais — gratuito, sem quota)
-2. Whisper local (fallback quando não há legenda disponível)
-
-A fonte usada é registrada em `transcript_source` para rastreabilidade.
+1. yt-dlp (legendas automáticas — mais resistente a bloqueios de IP)
+2. youtube-transcript-api (fallback)
 """
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass, field
+import subprocess
+import tempfile
+import os
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class TranscriptEntry:
 @dataclass
 class TranscriptResult:
     entries: list[TranscriptEntry]
-    source: str          # youtube_api | whisper | manual
+    source: str          # yt_dlp | youtube_api | whisper | manual
     language_code: str
     has_timestamps: bool = True
 
@@ -37,29 +39,103 @@ class TranscriptResult:
         return " ".join(e.text for e in self.entries)
 
 
+COOKIES_PATH = "/app/youtube_cookies.txt"
+
+
 class TranscriptService:
     PREFERRED_LANGS = ["pt", "pt-BR", "pt-PT", "en"]
 
+    def _cookies_available(self) -> bool:
+        return os.path.isfile(COOKIES_PATH)
+
     async def fetch(self, youtube_video_id: str) -> TranscriptResult | None:
-        """Tenta obter transcrição. Retorna None se nenhuma fonte funcionar."""
-        result = await self._from_youtube(youtube_video_id)
+        result = await self._from_ytdlp(youtube_video_id)
         if result:
             return result
-
-        result = await self._from_whisper(youtube_video_id)
+        result = await self._from_youtube(youtube_video_id)
         return result
+
+    async def _from_ytdlp(self, video_id: str) -> TranscriptResult | None:
+        """Baixa legendas automáticas com yt-dlp."""
+        try:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            with tempfile.TemporaryDirectory() as tmpdir:
+                out_tmpl = os.path.join(tmpdir, "sub")
+                for lang in ["pt", "en"]:
+                    cmd = [
+                        "yt-dlp",
+                        "--write-auto-sub",
+                        "--sub-langs", f"{lang}.*,{lang}",
+                        "--skip-download",
+                        "--sub-format", "json3",
+                        "-o", out_tmpl,
+                        "--no-warnings",
+                        "--quiet",
+                    ]
+                    if self._cookies_available():
+                        cmd += ["--cookies", COOKIES_PATH]
+                    cmd.append(url)
+                    subprocess.run(cmd, capture_output=True, timeout=60)
+
+                    # Procura o arquivo gerado
+                    for fname in os.listdir(tmpdir):
+                        if fname.endswith(".json3"):
+                            fpath = os.path.join(tmpdir, fname)
+                            entries = self._parse_json3(fpath)
+                            if entries:
+                                return TranscriptResult(
+                                    entries=entries,
+                                    source="yt_dlp",
+                                    language_code=lang,
+                                    has_timestamps=True,
+                                )
+        except FileNotFoundError:
+            logger.warning("yt-dlp não encontrado no PATH")
+        except subprocess.TimeoutExpired:
+            logger.warning("yt-dlp timeout para video_id=%s", video_id)
+        except Exception as exc:
+            logger.warning("yt-dlp falhou para video_id=%s: %s", video_id, exc)
+        return None
+
+    def _parse_json3(self, path: str) -> list[TranscriptEntry]:
+        """Parseia arquivo .json3 de legenda do yt-dlp."""
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            entries = []
+            for event in data.get("events", []):
+                segs = event.get("segs")
+                if not segs:
+                    continue
+                text = "".join(s.get("utf8", "") for s in segs).strip()
+                if not text or text == "\n":
+                    continue
+                start_ms = event.get("tStartMs", 0)
+                dur_ms = event.get("dDurationMs", 0)
+                entries.append(TranscriptEntry(
+                    text=text,
+                    start=start_ms / 1000,
+                    duration=dur_ms / 1000,
+                ))
+            return entries
+        except Exception as exc:
+            logger.warning("Falha ao parsear json3: %s", exc)
+            return []
 
     async def _from_youtube(self, video_id: str) -> TranscriptResult | None:
         try:
             from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 
+            kwargs = {}
+            if self._cookies_available():
+                kwargs["cookies"] = COOKIES_PATH
+
             try:
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, **kwargs)
             except (NoTranscriptFound, TranscriptsDisabled):
                 return None
 
             transcript = None
-            # Prioriza idiomas preferidos (manual > gerado automaticamente)
             for lang in self.PREFERRED_LANGS:
                 try:
                     transcript = transcript_list.find_manually_created_transcript([lang])
@@ -76,7 +152,6 @@ class TranscriptService:
                         pass
 
             if not transcript:
-                # Último recurso: qualquer disponível
                 try:
                     transcript = transcript_list.find_generated_transcript(
                         [t.language_code for t in transcript_list]
@@ -101,51 +176,4 @@ class TranscriptService:
             return None
         except Exception as exc:
             logger.warning("Falha ao buscar transcript via YouTube API: %s", exc)
-            return None
-
-    async def _from_whisper(self, video_id: str) -> TranscriptResult | None:
-        """Transcreve via Whisper local. Requer download do áudio."""
-        try:
-            import whisper
-            import tempfile
-            import subprocess
-
-            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                tmp_path = tmp.name
-
-            # Baixa áudio com yt-dlp (deve estar instalado no container)
-            result = subprocess.run(
-                ["yt-dlp", "-x", "--audio-format", "mp3", "-o", tmp_path, youtube_url],
-                capture_output=True,
-                timeout=120,
-            )
-            if result.returncode != 0:
-                return None
-
-            model = whisper.load_model("base")
-            output = model.transcribe(tmp_path, language="pt")
-
-            entries = [
-                TranscriptEntry(
-                    text=seg["text"].strip(),
-                    start=seg["start"],
-                    duration=seg["end"] - seg["start"],
-                )
-                for seg in output.get("segments", [])
-            ]
-            detected_lang = output.get("language", "pt")
-            return TranscriptResult(
-                entries=entries,
-                source="whisper",
-                language_code=detected_lang,
-                has_timestamps=True,
-            )
-
-        except ImportError:
-            logger.warning("whisper não instalado — fallback indisponível")
-            return None
-        except Exception as exc:
-            logger.warning("Falha ao transcrever via Whisper: %s", exc)
             return None
