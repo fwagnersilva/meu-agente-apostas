@@ -49,11 +49,42 @@ class TranscriptService:
         return os.path.isfile(COOKIES_PATH)
 
     async def fetch(self, youtube_video_id: str) -> TranscriptResult | None:
+        result = await self._from_proxy(youtube_video_id)
+        if result:
+            return result
         result = await self._from_ytdlp(youtube_video_id)
         if result:
             return result
         result = await self._from_youtube(youtube_video_id)
         return result
+
+    async def _from_proxy(self, video_id: str) -> TranscriptResult | None:
+        """Chama proxy local rodando no host Windows (IP residencial)."""
+        import httpx
+        try:
+            url = f"http://host.docker.internal:8001/transcript/{video_id}"
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                if "error" in data:
+                    return None
+                entries = [
+                    TranscriptEntry(text=e["text"], start=e["start"], duration=e["duration"])
+                    for e in data.get("entries", [])
+                ]
+                if not entries:
+                    return None
+                return TranscriptResult(
+                    entries=entries,
+                    source="proxy",
+                    language_code=data.get("language_code", "pt"),
+                    has_timestamps=True,
+                )
+        except Exception as exc:
+            logger.debug("Proxy de transcrição indisponível: %s", exc)
+            return None
 
     async def _from_ytdlp(self, video_id: str) -> TranscriptResult | None:
         """Baixa legendas automáticas com yt-dlp."""
