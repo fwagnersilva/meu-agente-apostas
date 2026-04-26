@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"

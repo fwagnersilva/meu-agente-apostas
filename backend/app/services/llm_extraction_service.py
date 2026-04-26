@@ -102,7 +102,12 @@ class LLMExtractionService:
     """Envia transcrição para LLM e retorna JSON v1 validado."""
 
     async def extract(self, normalized_text: str, video_title: str = "") -> dict[str, Any] | None:
-        """Tenta extração via Anthropic primeiro, depois OpenAI. Retorna None se falhar."""
+        """Tenta extração via Groq (grátis), Anthropic e OpenAI em cascata."""
+        if settings.GROQ_API_KEY:
+            result = await self._extract_groq(normalized_text, video_title)
+            if result:
+                return result
+
         if settings.ANTHROPIC_API_KEY:
             result = await self._extract_anthropic(normalized_text, video_title)
             if result:
@@ -115,6 +120,29 @@ class LLMExtractionService:
 
         logger.warning("Nenhuma API de LLM configurada — extração indisponível")
         return None
+
+    async def _extract_groq(self, text: str, title: str) -> dict | None:
+        user_content = f"Título do vídeo: {title}\n\nTranscrição:\n{text[:12000]}"
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "response_format": {"type": "json_object"},
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_content},
+                        ],
+                    },
+                )
+            resp.raise_for_status()
+            raw = resp.json()["choices"][0]["message"]["content"]
+            return self._parse_json(raw)
+        except Exception as exc:
+            logger.warning("Falha na extração via Groq: %s", exc)
+            return None
 
     async def _extract_anthropic(self, text: str, title: str) -> dict | None:
         user_content = f"Título do vídeo: {title}\n\nTranscrição:\n{text[:12000]}"
