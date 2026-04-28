@@ -131,11 +131,23 @@ class EntityResolverService:
 
     @staticmethod
     def _parse_date(date_str: str | None) -> datetime | None:
+        from datetime import date, timedelta
         if not date_str:
             return None
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
             try:
-                return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+                dt = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
+                # If the LLM returned a year more than 60 days in the past, assume
+                # it guessed the wrong year and try advancing by 1 or 2 years.
+                today = datetime.now(tz=timezone.utc).date()
+                delta = (today - dt.date()).days
+                if delta > 60:
+                    for years_ahead in (1, 2):
+                        candidate = dt.replace(year=dt.year + years_ahead)
+                        if (candidate.date() - today).days >= -7:
+                            dt = candidate
+                            break
+                return dt
             except ValueError:
                 continue
         return None

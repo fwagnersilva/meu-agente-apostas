@@ -126,6 +126,48 @@ async def manual_analyze(
     }
 
 
+@router.delete("/{video_id}", status_code=204)
+async def delete_video(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_reviewer),
+):
+    """Remove vídeo e todas análises, ideias e transcrições associadas."""
+    from fastapi import HTTPException, status as http_status
+    from sqlalchemy import text
+
+    result = await db.execute(text("SELECT id FROM videos WHERE id = :id"), {"id": video_id})
+    if not result.fetchone():
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Vídeo não encontrado")
+
+    # Delete in FK dependency order (children first)
+    await db.execute(text("""
+        DELETE FROM idea_conditions WHERE idea_id IN (
+            SELECT id FROM game_ideas WHERE video_id = :id
+        )
+    """), {"id": video_id})
+    await db.execute(text("""
+        DELETE FROM idea_reasons WHERE idea_id IN (
+            SELECT id FROM game_ideas WHERE video_id = :id
+        )
+    """), {"id": video_id})
+    await db.execute(text("""
+        DELETE FROM idea_labels WHERE idea_id IN (
+            SELECT id FROM game_ideas WHERE video_id = :id
+        )
+    """), {"id": video_id})
+    await db.execute(text("DELETE FROM game_ideas WHERE video_id = :id"), {"id": video_id})
+    await db.execute(text("""
+        DELETE FROM video_analysis_reviews WHERE video_analysis_id IN (
+            SELECT id FROM video_analyses WHERE video_id = :id
+        )
+    """), {"id": video_id})
+    await db.execute(text("DELETE FROM video_analyses WHERE video_id = :id"), {"id": video_id})
+    await db.execute(text("DELETE FROM video_transcripts WHERE video_id = :id"), {"id": video_id})
+    await db.execute(text("DELETE FROM videos WHERE id = :id"), {"id": video_id})
+    await db.commit()
+
+
 @router.post("/{video_id}/reprocess", response_model=MessageResponse)
 async def reprocess_video(
     video_id: int,

@@ -84,6 +84,8 @@ class IdeaPersistenceService:
             avoid_text=data.get("avoid_text"),
             rationale_text=data.get("rationale_text"),
             condition_text=data.get("condition_text"),
+            timing=data.get("timing", "any"),
+            live_trigger=data.get("live_trigger"),
             source_excerpt=data.get("source_excerpt"),
             source_timestamp_start=data.get("source_timestamp_start"),
             source_timestamp_end=data.get("source_timestamp_end"),

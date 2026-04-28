@@ -69,42 +69,49 @@ class VideoPipelineService:
         now = datetime.now(timezone.utc)
 
         # Passo 1 — Transcrição
-        transcript_result = await self.transcript_svc.fetch(video.youtube_video_id)
-        if not transcript_result:
-            await self._finalize_no_transcript(video, job, now)
-            return
-
-        # Passo 2 — Normalização
-        normalized = self.norm_svc.normalize(transcript_result.full_text)
-
-        # Passo 3 — Persistir transcript
-        transcript = await self.transcript_repo.create(
-            video_id=video.id,
-            transcript_source=transcript_result.source,
-            language_code=transcript_result.language_code,
-            raw_transcript_text=transcript_result.full_text,
-            normalized_transcript_text=normalized,
-            has_timestamps=transcript_result.has_timestamps,
-        )
-
-        # Passo 4 — Segmentação
-        if transcript_result.has_timestamps and transcript_result.entries:
-            segments = self.seg_svc.segment_by_entries(transcript_result.entries, normalized)
+        # Para vídeos manuais, reutiliza o transcript já existente no DB
+        existing_transcript = await self.transcript_repo.get_by_video_id(video.id)
+        if existing_transcript and existing_transcript.transcript_source == "manual":
+            # Sempre re-normaliza do raw para aplicar padroes mais recentes
+            raw = existing_transcript.raw_transcript_text or existing_transcript.normalized_transcript_text or ""
+            normalized = self.norm_svc.normalize(raw)
         else:
-            segments = self.seg_svc.segment_text(normalized)
+            transcript_result = await self.transcript_svc.fetch(video.youtube_video_id)
+            if not transcript_result:
+                await self._finalize_no_transcript(video, job, now)
+                return
 
-        # Passo 5 — Persistir segmentos
-        segments_data = [
-            {
-                "raw_text": s.raw_text,
-                "normalized_text": s.normalized_text,
-                "segment_type": s.segment_type,
-                "start_seconds": s.start_seconds,
-                "end_seconds": s.end_seconds,
-            }
-            for s in segments
-        ]
-        await self.transcript_repo.create_segments_bulk(video.id, transcript.id, segments_data)
+            # Passo 2 — Normalização
+            normalized = self.norm_svc.normalize(transcript_result.full_text)
+
+            # Passo 3 — Persistir transcript
+            transcript_result_obj = await self.transcript_repo.create(
+                video_id=video.id,
+                transcript_source=transcript_result.source,
+                language_code=transcript_result.language_code,
+                raw_transcript_text=transcript_result.full_text,
+                normalized_transcript_text=normalized,
+                has_timestamps=transcript_result.has_timestamps,
+            )
+
+            # Passo 4 — Segmentação
+            if transcript_result.has_timestamps and transcript_result.entries:
+                segments = self.seg_svc.segment_by_entries(transcript_result.entries, normalized)
+            else:
+                segments = self.seg_svc.segment_text(normalized)
+
+            # Passo 5 — Persistir segmentos
+            segments_data = [
+                {
+                    "raw_text": s.raw_text,
+                    "normalized_text": s.normalized_text,
+                    "segment_type": s.segment_type,
+                    "start_seconds": s.start_seconds,
+                    "end_seconds": s.end_seconds,
+                }
+                for s in segments
+            ]
+            await self.transcript_repo.create_segments_bulk(video.id, transcript_result_obj.id, segments_data)
 
         # Passo 6 — Criar VideoAnalysis
         slug = f"analise-{video.youtube_video_id}-{uuid.uuid4().hex[:8]}"
@@ -138,16 +145,11 @@ class VideoPipelineService:
             "video", video.id, "processed",
             payload={
                 "step": "completed",
-                "transcript_source": transcript_result.source,
-                "segments": len(segments),
                 "analysis_id": analysis.id,
                 "analysis_status": analysis.analysis_status,
             },
         )
-        logger.info(
-            "Vídeo %s processado: %d segmentos, analysis_id=%s",
-            video.id, len(segments), analysis.id,
-        )
+        logger.info("Video %s processado: analysis_id=%s", video.id, analysis.id)
 
     async def _finalize_no_transcript(self, video: Video, job: ProcessingJob, now: datetime) -> None:
         """Cria análise marcada como falha de transcrição."""

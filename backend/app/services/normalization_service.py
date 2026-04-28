@@ -16,6 +16,16 @@ _NOISE_PATTERNS: list[re.Pattern] = [
     re.compile(r"\bah+\b", re.IGNORECASE),
     re.compile(r"\bhmm+\b", re.IGNORECASE),
     re.compile(r"\bé+\s+é+\b", re.IGNORECASE),
+    # Cabeçalhos de capítulo do YouTube
+    re.compile(r"Cap[íi]tulo\s+\d+\s*:[^\n]*", re.IGNORECASE),
+    # "[limpando a garganta]", "[ruído]", etc.
+    re.compile(r"\[[^\]]{1,40}\]"),
+    # Timestamps YouTube colados: "8:228 minutos e 22 segundos" — remove "MM:SSN"
+    re.compile(r"\d{1,2}:\d{2}(?::\d{2})?\d*"),
+    # Rótulos de tempo: "minutos e 22 segundos" (residuo apos remover timestamp colado)
+    re.compile(r"\bminutos?\s+e\s+\d+\s+segundos?", re.IGNORECASE),
+    # Rótulos de tempo isolados: "22 segundos", "8 minutos" — sem \b no final pois ficam colados
+    re.compile(r"\b\d+\s+(?:minutos?|segundos?|horas?)", re.IGNORECASE),
 ]
 
 # Frases de CTA / autopropaganda que não devem virar ideias

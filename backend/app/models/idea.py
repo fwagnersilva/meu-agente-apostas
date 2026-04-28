@@ -19,10 +19,10 @@ class GameIdea(Base):
     source_timestamp_end: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # possible_entry | strong_entry | caution | no_value | avoid_game |
-    # watch_live | trend_read | risk_alert | condition_based_entry | contextual_note
+    # watch_live | trend_read | risk_alert | condition_based_entry | contextual_note | game_script
     idea_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    # over_0_5 | over_1_5 | over_2_5 | under_2_5 | btts_yes | btts_no |
-    # home_win | away_win | draw_no_bet | asian_handicap | corners | cards |
+    # over_0_5 | over_1_5 | over_2_5 | over_3_5 | under_2_5 | btts_yes | btts_no |
+    # home_win | away_win | draw | draw_no_bet | asian_handicap | corners | cards |
     # player_props | lay | back | no_specific_market
     market_type: Mapped[str] = mapped_column(String(50), default="no_specific_market", nullable=False)
     selection_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -38,6 +38,8 @@ class GameIdea(Base):
     avoid_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     rationale_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     condition_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timing: Mapped[str | None] = mapped_column(String(20), default="any", nullable=True)
+    live_trigger: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     is_actionable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

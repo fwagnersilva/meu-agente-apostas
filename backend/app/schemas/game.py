@@ -25,16 +25,35 @@ class IdeaConditionResponse(BaseModel):
 
     id: int
     condition_type: str
-    text: str
+    text: str | None = None  # alias for condition_text
+    condition_text: str | None = None
     is_inferred: bool
+
+    @classmethod
+    def model_validate(cls, obj, **kw):
+        instance = super().model_validate(obj, **kw)
+        if instance.text is None and instance.condition_text is not None:
+            instance.text = instance.condition_text
+        return instance
 
 
 class IdeaReasonResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    category: str
-    text: str
+    category: str | None = None
+    reason_category: str | None = None
+    text: str | None = None
+    reason_text: str | None = None
+
+    @classmethod
+    def model_validate(cls, obj, **kw):
+        instance = super().model_validate(obj, **kw)
+        if instance.category is None:
+            instance.category = instance.reason_category or "unknown"
+        if instance.text is None:
+            instance.text = instance.reason_text or ""
+        return instance
 
 
 class IdeaLabelResponse(BaseModel):
@@ -44,6 +63,15 @@ class IdeaLabelResponse(BaseModel):
     label: str
 
 
+class GameResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    home_score: int | None = None
+    away_score: int | None = None
+    total_goals: int | None = None
+    both_teams_scored: bool | None = None
+
+
 class IdeaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,6 +79,7 @@ class IdeaResponse(BaseModel):
     game_id: int
     video_id: int
     tipster_id: int
+    tipster_name: str | None = None
     idea_type: str
     market_type: str
     selection_label: str | None
@@ -63,6 +92,8 @@ class IdeaResponse(BaseModel):
     avoid_text: str | None
     rationale_text: str | None
     condition_text: str | None
+    timing: str | None = "any"
+    live_trigger: str | None = None
     source_excerpt: str | None
     source_timestamp_start: float | None
     source_timestamp_end: float | None
@@ -85,6 +116,7 @@ class GameResponse(BaseModel):
     competition: CompetitionResponse | None = None
     scheduled_at: datetime | None
     status: str
+    result: GameResultResponse | None = None
     created_at: datetime
 
 

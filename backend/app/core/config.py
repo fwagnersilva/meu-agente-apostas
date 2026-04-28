@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GROQ_API_KEY: str = ""
 
+    # Ollama (LLM local — sem limites de payload)
+    OLLAMA_BASE_URL: str = ""           # ex: http://host.docker.internal:11434
+    OLLAMA_MODEL: str = "llama3.2"      # modelo instalado localmente
+
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
 

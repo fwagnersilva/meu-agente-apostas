@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.idea import GameIdea, IdeaCondition, IdeaReason, IdeaLabel
+from app.models.tipster import Tipster
 
 
 class IdeaRepository:
@@ -36,6 +37,7 @@ class IdeaRepository:
                 selectinload(GameIdea.conditions),
                 selectinload(GameIdea.reasons),
                 selectinload(GameIdea.labels),
+                selectinload(GameIdea.tipster),
             )
             .order_by(GameIdea.id)
         )

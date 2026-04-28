@@ -23,9 +23,9 @@ class Video(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     channel: Mapped["YoutubeChannel"] = relationship("YoutubeChannel", back_populates="videos")
-    analyses: Mapped[list["VideoAnalysis"]] = relationship("VideoAnalysis", back_populates="video")
-    transcript: Mapped["VideoTranscript | None"] = relationship("VideoTranscript", back_populates="video", uselist=False)
-    ideas: Mapped[list["GameIdea"]] = relationship("GameIdea", back_populates="video")
+    analyses: Mapped[list["VideoAnalysis"]] = relationship("VideoAnalysis", back_populates="video", cascade="all, delete-orphan")
+    transcript: Mapped["VideoTranscript | None"] = relationship("VideoTranscript", back_populates="video", uselist=False, cascade="all, delete-orphan")
+    ideas: Mapped[list["GameIdea"]] = relationship("GameIdea", back_populates="video", cascade="all, delete-orphan")
 
 
 class VideoAnalysis(Base):
@@ -61,5 +61,5 @@ class VideoAnalysis(Base):
 
     video: Mapped[Video] = relationship("Video", back_populates="analyses")
     reviewer: Mapped["User | None"] = relationship("User", foreign_keys=[reviewer_user_id])
-    ideas: Mapped[list["GameIdea"]] = relationship("GameIdea", back_populates="video_analysis")
-    reviews: Mapped[list["VideoAnalysisReview"]] = relationship("VideoAnalysisReview", back_populates="video_analysis")
+    ideas: Mapped[list["GameIdea"]] = relationship("GameIdea", back_populates="video_analysis", cascade="all, delete-orphan")
+    reviews: Mapped[list["VideoAnalysisReview"]] = relationship("VideoAnalysisReview", back_populates="video_analysis", cascade="all, delete-orphan")
