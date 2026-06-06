@@ -11,8 +11,8 @@ psycopg2-binary==2.9.9
 # Autenticação
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-jose[cryptography]==3.3.0
-python-multipart==0.0.12
+python-jose[cryptography]==3.4.0
+python-multipart==0.0.26
 
 # Filas assíncronas
 celery==5.4.0
@@ -28,9 +28,9 @@ httpx==0.27.2
 
 # Transcrição
 youtube-transcript-api==0.6.3
-yt-dlp==2024.11.18
+yt-dlp==2026.2.21
 
 # Utilitários
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 tenacity==9.0.0
 unidecode==1.3.8
